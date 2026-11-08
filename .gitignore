@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.DS_Store
+.streamlit/secrets.toml
+
+# 업로드/생성 데이터는 커밋하지 않음 (폴더는 유지)
+src/data/pdf/*
+src/data/image/*
+src/data/db/*
+!src/data/**/.gitkeep
