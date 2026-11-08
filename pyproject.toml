@@ -1,0 +1,34 @@
+[project]
+name = "withgod"
+version = "0.1.0"
+description = "Streamlit app"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.40",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "python-dotenv>=1.0",
+    "mcp>=2.0",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.6", "pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = [
+    "src/app",
+    "src/backend",
+    "src/schema",
+    "src/workflow",
+    "src/agent",
+    "src/mcp_server",
+    "src/skills",
+]
+
+[tool.ruff]
+line-length = 100
