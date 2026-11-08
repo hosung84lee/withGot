@@ -19,5 +19,7 @@ _bootstrap()
 pages = [
     st.Page("views/home.py", title="Home", icon="🏠", default=True),
     st.Page("views/workflow_page.py", title="Workflow", icon="⚙️"),
+    st.Page("views/agent_page.py", title="Agent", icon="🤖"),
+    st.Page("views/trace_page.py", title="Trace", icon="🔍"),
 ]
 st.navigation(pages).run()
