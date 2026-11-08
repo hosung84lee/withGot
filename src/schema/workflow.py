@@ -12,7 +12,7 @@ class StepResult(BaseModel):
 
 
 class WorkflowResult(BaseModel):
-    workflow_id: str
+    workflow_id: str  # = trace_id (Trace 화면에서 이 ID 로 조회)
     input_text: str
     steps: list[StepResult]
     summary: str

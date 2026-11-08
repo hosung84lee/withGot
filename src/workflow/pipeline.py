@@ -1,9 +1,12 @@
 """여러 단계(전처리 → 에이전트 → 후처리)를 묶는 워크플로우."""
 
-from agent.base import Agent
-from schema.chat import ChatMessage
+from agent import Agent
+from schema.agent import AgentMessage, AgentResult, ProviderName
 
 
-def run_chat(messages: list[ChatMessage], agent: Agent | None = None) -> ChatMessage:
-    agent = agent or Agent()
-    return agent.run(messages)
+def run_agent(
+    messages: list[AgentMessage] | str,
+    provider: ProviderName | None = None,
+    model: str | None = None,
+) -> AgentResult:
+    return Agent(provider, model=model).run(messages)

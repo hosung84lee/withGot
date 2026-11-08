@@ -33,6 +33,12 @@ if result:
     c1.metric("Workflow ID", result.workflow_id)
     c2.metric("단계 수", len(result.steps))
     c3.metric("총 소요(초)", result.total_sec)
+    st.page_link(
+        "views/trace_page.py",
+        label="Trace 보기",
+        icon="🔍",
+        query_params={"trace_id": result.workflow_id},
+    )
 
     st.info(result.summary)
     if result.keywords:
