@@ -3,6 +3,7 @@
 Streamlit 기반 앱.
 
 > 새 PC 에서 시작한다면 [docs/HACKATHON.md](docs/HACKATHON.md) 부터 보세요 (환경 세팅, 현재 상태, 다음 할 일).
+> 해커톤에서 새 저장소에 다시 만들 때의 명세: [docs/REBUILD_GUIDE.md](docs/REBUILD_GUIDE.md)
 
 ## 실행
 
@@ -17,7 +18,7 @@ MCP 서버: `uv run python -m mcp_server.server`
 ## 폴더 구조
 
 ```
-docs/             # 문서 (HACKATHON.md, agent.md, tracing.md, terms.md, coverage_schema.md, coverage_extract.md)
+docs/             # 문서 (HACKATHON.md, REBUILD_GUIDE.md, agent.md, tracing.md, terms.md, coverage_schema.md, coverage_extract.md)
 tests/            # pytest (실제 약관 PDF 테스트는 --pdf)
 tools/
 └── terms_viewer/ # 약관 구조화 뷰어 HTML 만들기 (build.py)

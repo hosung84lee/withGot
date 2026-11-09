@@ -1,7 +1,10 @@
 # 해커톤 준비 노트 (새 PC 에서 시작하기)
 
-2026-11-09 에 한 작업을 정리한 문서입니다. 새 PC 에서 이 문서만 보고 환경을 세팅하고,
-지금까지 만든 기능을 다시 돌려 볼 수 있게 썼습니다.
+2026-11-09 에 한 작업을 정리한 문서입니다. 새 PC 에서 이 문서를 보고 환경을 세팅하고,
+[REBUILD_GUIDE.md](REBUILD_GUIDE.md) 를 따라 새 저장소에 다시 구현할 수 있게 썼습니다.
+
+> **중요: 해커톤에서는 이 저장소 코드를 쓸 수 없고 새 저장소에 처음부터 다시 만들어야 합니다.**
+> 이 저장소는 참고용이고, 다시 만들 때는 [REBUILD_GUIDE.md](REBUILD_GUIDE.md)(설계·규칙·정답 수치·테스트 예시)를 따르세요.
 
 - 저장소: https://github.com/hosung84lee/withGot (브랜치 `main`)
 - 세부 문서: [약관 구조화·검증](terms.md) · [사고보장 데이터 추출](coverage_extract.md) · [사고보장 스키마](coverage_schema.md)
@@ -18,49 +21,80 @@
 | 사고보장 추출: 묶음 → LLM → 근거 검증 → 정답 비교 | **코드·테스트 완료, 실제 LLM 미실행** | `src/coverage_extract/` |
 | 약관 구조화 뷰어 (HTML) | 동작 | `tools/terms_viewer/` |
 
-**해커톤에서 가장 먼저 할 일은 OpenAI 키를 넣고 실손 2605 《질병급여형》을 실제로 추출해서 정답과 비교하는 것**입니다 (5장).
+위 표는 **이 저장소(참고용)** 의 상태입니다. 해커톤에서는 새 저장소에 [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 마일스톤 순서로
+다시 만들고, M6 에서 처음으로 실제 OpenAI 추출을 돌려 정답과 비교합니다 (5장).
 
-## 2. 새 PC 환경 세팅 (Windows)
+## 2. 새 PC 에서 새 저장소로 시작하기 (Windows)
 
+해커톤에서는 이 저장소를 clone 하지 않고 **새 저장소를 만들어** 처음부터 구현합니다.
 PowerShell 기준입니다. 설치 후에는 **터미널을 새로 열어야** `git`, `uv` 명령이 잡힙니다.
 
+### 2.1 도구 설치
+
 ```powershell
-# 1) Git, uv 설치
 winget install --id Git.Git -e --source winget
 winget install --id astral-sh.uv -e --source winget
 # (터미널 새로 열기)
 
-# 2) git 사용자 설정 (커밋 작성자)
 git config --global user.name "hosung84lee"
 git config --global user.email "<본인 이메일>"
 git config --global core.quotepath false   # 한글 파일명이 \354\202… 처럼 깨지지 않게
-
-# 3) 저장소 받기
-cd D:\dev            # 원하는 작업 폴더
-git clone https://github.com/hosung84lee/withGot
-cd withGot
-
-# 4) 파이썬 + 의존성 설치 (uv 가 .python-version 의 Python 3.12 도 알아서 받음)
-uv sync
-
-# 5) 환경 변수 파일
-copy .env.example .env
-notepad .env
 ```
 
-`.env` 에서 바꿀 값 (앱은 OpenAI 전용, 팀원 PR #4):
+macOS 라면 `brew install git uv`.
+
+### 2.2 새 저장소 만들기
+
+1. GitHub 웹에서 **New repository** → 이름 정하고 README·.gitignore 없이 빈 저장소로 만듦.
+2. 로컬에서 프로젝트를 만들고 연결:
+
+```powershell
+cd D:\dev                         # 원하는 작업 폴더
+uv init <새저장소이름> --python 3.12
+cd <새저장소이름>
+uv add pydantic pydantic-settings python-dotenv pypdf openai
+uv add --dev pytest ruff
+
+# .gitignore 에 최소한 아래를 넣기
+#   .venv/  .env  __pycache__/  .pytest_cache/  .ruff_cache/
+
+git add .
+git commit -m "프로젝트 시작"
+git branch -M main
+git remote add origin https://github.com/<계정>/<새저장소이름>.git
+git push -u origin main           # 처음 push 때 브라우저로 GitHub 로그인
+```
+
+3. `.env` 파일 (git 에 넣지 않음):
 
 ```ini
 OPENAI_API_KEY=sk-...             # 해커톤에서 받은 키
-OPENAI_MODEL=gpt-6-luna           # 기본값. 쓸 모델 이름으로 바꿔도 됨
-OPENAI_REASONING_EFFORT=none      # 설명은 .env.example 참고
+OPENAI_MODEL=gpt-6-luna           # 쓸 모델 이름
 ```
 
-`git push` 처음 할 때 브라우저로 GitHub 로그인 창이 뜹니다 (Git Credential Manager).
+### 2.3 약관 PDF 준비
 
-macOS 라면 `brew install git uv` 후 같은 순서이고, `copy` 대신 `cp .env.example .env`.
+[REBUILD_GUIDE.md 2.1](REBUILD_GUIDE.md) 의 약관 7개를 받아 새 저장소의 데이터 폴더(예: `data/policies/`)에 넣습니다.
+받는 곳: 이 저장소의 `insurance-workbench/data/reference/policies/` (GitHub 웹에서 파일별 다운로드) 또는 삼성생명 공시실.
+최소한 **실손 2605**(`삼성생명_급여실손의료비보장보험_2605갱신형_약관_2026-09-23.pdf`)는 꼭 필요합니다 (정답 데이터 기준).
 
-## 3. 세팅 확인
+### 2.4 구현 시작
+
+- [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 를 열어 두고 마일스톤 M1 부터 진행합니다.
+  (문서 반입이 허용되면 새 저장소 `docs/` 에 복사해 두면 Claude Code 가 읽기 편합니다. 대회 규정을 먼저 확인하세요.)
+- Claude Code 첫 요청 예: "REBUILD_GUIDE.md 의 마일스톤 M1 부터 순서대로 구현해줘. 각 완료 기준을 테스트로 만들고 통과하면 다음으로 넘어가."
+- 실제 PDF 테스트는 느리므로(약관 하나 25~35초) 처음부터 `pytest --pdf` 같은 옵션으로 분리해 두세요.
+
+## 3. (참고) 이 저장소를 그대로 실행해 보기
+
+해커톤 PC 가 아닌 곳에서 지금 만든 결과를 확인할 때만 씁니다.
+
+```powershell
+git clone https://github.com/hosung84lee/withGot
+cd withGot
+uv sync
+copy .env.example .env            # OPENAI_API_KEY 입력
+```
 
 ```powershell
 # 빠른 테스트 (약 5초, 116개 통과 · 5개 건너뜀이 정상)
@@ -95,21 +129,16 @@ withGot 최상위 `pytest` 는 `tests/` 만 봅니다.
 
 ## 5. 해커톤에서 할 일 (추천 순서)
 
-1. **실제 추출 1회** — 실손 2605 주계약 《질병급여형》 (묶음 1개, 약 7,700자)
-   ```powershell
-   uv run python -m coverage_extract "insurance-workbench/data/reference/policies/삼성생명_급여실손의료비보장보험_2605갱신형_약관_2026-09-23.pdf" `
-       --section 질병급여형 --out out.json `
-       --compare tests/fixtures/silson_2605_disease_covered.json
-   ```
-   출력의 `근거 확인 / 검토 필요` 와 `정답 비교: 값까지 일치 N%` 를 봅니다.
-   다시 비교만 할 때는 `--ground out.json --compare …` (API 호출 없음).
-2. **프롬프트 다듬기** — `src/coverage_extract/extractor.py` 의 `SYSTEM`, `PROMPT`.
-   틀린 항목은 비교 결과의 `[값이 다름]`, `[빠짐]` 과 근거 검증의 `NUMBER_NOT_FOUND` 로 드러납니다.
-3. **범위 넓히기** — `--section` 없이 8묶음 전체 (주계약 2 + 비급여 특약 6).
-   정답 파일을 《상해급여형》·비급여로 늘리면 평가 범위도 넓어집니다.
-4. **개정 비교** — 실손 2601 과 2605 를 각각 추출해 규칙 id 기준으로 비교 (설계: `coverage_schema.md` 6장).
-5. **화면** — Streamlit 약관 분석 화면(`src/app/views/terms_page.py`)이나 뷰어에 "사고보장" 탭.
-6. **정액형** — 암보험은 지급 금액이 별표에 있어 묶음에 인용 별표·정의 조를 넣는 확장이 필요.
+1. **새 저장소 세팅** (2장) + 약관 PDF 준비.
+2. **M1~M5 재구현** — [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 의 마일스톤 순서. API 키 없이 진행.
+   마일스톤마다 가이드 16장 예시와 15장 수치로 확인. 정답 데이터는 가이드 13장 (새 저장소에서 JSON 으로 다시 작성).
+3. **M6 첫 실제 추출** — 실손 2605 주계약 《질병급여형》 묶음 하나(약 7,700자)만 OpenAI 로 추출 →
+   근거 검증(`confirmed / needs_review`) + 정답 비교(일치율) 확인.
+4. **프롬프트 다듬기** — 비교의 `값이 다름`·`빠짐`, 근거 검증의 `NUMBER_NOT_FOUND` 를 보고 고침.
+5. **범위 넓히기** — 실손 2605 8묶음 전체 (주계약 2 + 비급여 특약 6). 정답을 《상해급여형》·비급여로 늘리기.
+6. **개정 비교** — 실손 2601 과 2605 를 각각 추출해 규칙 id 기준으로 비교.
+7. **화면** — 결과를 보여줄 UI (약관 트리 + 사고보장 규칙 + 근거 원문 이동). 이 저장소의 `tools/terms_viewer/` 화면 구성을 참고.
+8. **정액형** — 암보험은 지급 금액이 별표에 있어 묶음에 인용 별표·정의 조를 넣는 확장이 필요.
 
 ## 6. 오늘 한 작업 (커밋 순서)
 
@@ -183,6 +212,8 @@ start tools/terms_viewer/out/terms-viewer.html     # 브라우저로 열기 (mac
 
 ## 10. Claude Code 로 이어서 작업할 때
 
-- 새 PC 의 Claude Code 는 이전 대화·메모리를 모릅니다. 저장소 최상위 `CLAUDE.md` 가 이 문서와 세부 문서를 가리키므로,
-  첫 요청에서 "docs/HACKATHON.md 읽고 이어서 하자" 라고 하면 됩니다.
-- 약관 구조화(`src/terms/`)를 고쳤으면 `uv run pytest --pdf` 로 실제 약관까지 확인하세요.
+- 새 PC 의 Claude Code 는 이전 대화·메모리를 모릅니다. 새 저장소에서 REBUILD_GUIDE.md 를 읽게 하고
+  "마일스톤 M1 부터 구현해줘" 처럼 요청하세요 (2.4).
+- 새 저장소에도 `CLAUDE.md` 를 만들어 두면 좋습니다: 패키지 관리(uv), 테스트 명령(`pytest`, `pytest --pdf`),
+  가이드 위치, 커밋 규칙 정도. 이 저장소의 `CLAUDE.md` 가 예시입니다.
+- 구조화 규칙을 고쳤으면 실제 약관 PDF 테스트까지 돌려 15장 수치가 그대로인지 확인하세요.
