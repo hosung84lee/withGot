@@ -15,7 +15,7 @@ MCP 서버: `uv run python -m mcp_server.server`
 ## 폴더 구조
 
 ```
-docs/             # 문서 (agent.md, tracing.md, terms.md)
+docs/             # 문서 (agent.md, tracing.md, terms.md, coverage_schema.md)
 tests/            # pytest
 src/
 ├── app/          # Streamlit UI (main.py + views/)
@@ -37,6 +37,8 @@ src/
 앱의 **약관 분석** 화면에서 약관(PDF/TXT/붙여넣기)을 조·항·호·목으로 구조화하고, 구조를 검증한 뒤
 AI 로 조항별 위험(약관규제법 기준)을 검토합니다. AI 분석 결과가 원문에 근거하는지도 다시 검증합니다.
 자세한 내용: [docs/terms.md](docs/terms.md)
+
+약관에서 뽑은 보장 정보를 담는 표준 구조(사고보장 Canonical Schema) 설계: [docs/coverage_schema.md](docs/coverage_schema.md)
 
 ```python
 from terms import parse_terms, validate_structure, run_terms_pipeline
