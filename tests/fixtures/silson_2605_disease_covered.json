@@ -1,0 +1,308 @@
+{
+  "name": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+  "insurer": "삼성생명",
+  "version": "2026-09-23 개정약관",
+  "coverages": [
+    {
+      "id": "p0",
+      "name": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+      "kind": "main",
+      "risks": [
+        {
+          "id": "p0/질병급여형/hospitalization1",
+          "claim_reason": "hospitalization",
+          "section": "질병급여형",
+          "rules": [
+            {
+              "id": "p0/질병급여형/hospitalization1/1",
+              "name": "급여 입원",
+              "conditions": {
+                "limit": {"amounts": [{"amount": 50000000, "per": "year", "selectable": true}]},
+                "extension": {"days": 180}
+              },
+              "benefit": {
+                "type": "actual_cost",
+                "base": "medical_cost",
+                "cost_type": "covered",
+                "ratio": {"numerator": 80, "denominator": 100},
+                "copay_cap_annual": 2000000
+              },
+              "source": {
+                "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                "section": "질병급여형",
+                "article": "제3조",
+                "paragraph": 1,
+                "quote": "전액본인부담금을 말합니다)의 80%에 해당하는 금액"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                  "article": "제5조",
+                  "paragraph": 1,
+                  "quote": "입원과 통원의 보상금액을 합산하여 5천만원 이내에서"
+                },
+                {
+                  "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                  "article": "제5조",
+                  "paragraph": 4,
+                  "quote": "연간 200만원을 초과하는 경우 그 초과금액은 제1항의 한도내에서 보상합니다"
+                }
+              ],
+              "status": "needs_review"
+            }
+          ]
+        },
+        {
+          "id": "p0/질병급여형/outpatient2",
+          "claim_reason": "outpatient",
+          "section": "질병급여형",
+          "rules": [
+            {
+              "id": "p0/질병급여형/outpatient2/1",
+              "name": "급여 통원 - 의원·보건소·약국 등",
+              "conditions": {
+                "facility": "의원·보건소·보건진료소의 외래, 약국·한국희귀필수의약품센터의 처방조제 (종합병원 제외)",
+                "limit": {
+                  "amounts": [
+                    {"amount": 200000, "per": "visit", "selectable": true},
+                    {"amount": 50000000, "per": "year", "selectable": true}
+                  ]
+                },
+                "extension": {"days": 180, "max_visits": 90}
+              },
+              "benefit": {
+                "type": "actual_cost",
+                "base": "medical_cost",
+                "cost_type": "covered",
+                "deductible": {
+                  "amounts": [10000],
+                  "ratios": [{"numerator": 20, "denominator": 100}],
+                  "copay_rate": true,
+                  "pick": "max"
+                }
+              },
+              "source": {
+                "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                "section": "질병급여형",
+                "article": "제3조",
+                "paragraph": 1,
+                "quote": "＜표 1>의 ‘통원항목별 공제금액’을 뺀 금액"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                  "article": "제5조",
+                  "paragraph": 5,
+                  "quote": "통원 1회당 20만원 이내에서 회사가 정한 금액 중 계약자가 선택한 금액의 한도 내에서 보상합니다"
+                }
+              ],
+              "status": "needs_review"
+            },
+            {
+              "id": "p0/질병급여형/outpatient2/2",
+              "name": "급여 통원 - 종합병원·상급종합병원·전문요양기관",
+              "conditions": {
+                "facility": "종합병원·상급종합병원·전문요양기관의 외래와 그에 따른 처방조제",
+                "limit": {
+                  "amounts": [
+                    {"amount": 200000, "per": "visit", "selectable": true},
+                    {"amount": 50000000, "per": "year", "selectable": true}
+                  ]
+                },
+                "extension": {"days": 180, "max_visits": 90}
+              },
+              "benefit": {
+                "type": "actual_cost",
+                "base": "medical_cost",
+                "cost_type": "covered",
+                "deductible": {
+                  "amounts": [20000],
+                  "ratios": [{"numerator": 20, "denominator": 100}],
+                  "copay_rate": true,
+                  "pick": "max"
+                }
+              },
+              "source": {
+                "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                "section": "질병급여형",
+                "article": "제3조",
+                "paragraph": 1,
+                "quote": "「의료법」 제 3 조의 4 에 의한 상급종합병원"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                  "article": "제5조",
+                  "paragraph": 5,
+                  "quote": "통원 1회당 20만원 이내에서"
+                }
+              ],
+              "status": "needs_review"
+            }
+          ]
+        },
+        {
+          "id": "p0/질병급여형/other3",
+          "claim_reason": "other",
+          "section": "질병급여형",
+          "rules": [
+            {
+              "id": "p0/질병급여형/other3/1",
+              "name": "건강보험·의료급여 미적용 시 급여의료비",
+              "special_conditions": [
+                {"type": "no_health_insurance", "description": "「국민건강보험법」 제5조, 제53조, 제54조에 따라 요양급여를 적용받지 못하는 경우"}
+              ],
+              "conditions": {
+                "limit": {"amounts": [{"amount": 50000000, "per": "year", "selectable": true}]}
+              },
+              "benefit": {
+                "type": "actual_cost",
+                "base": "medical_cost",
+                "cost_type": "covered",
+                "ratio": {"numerator": 40, "denominator": 100}
+              },
+              "source": {
+                "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                "section": "질병급여형",
+                "article": "제3조",
+                "paragraph": 2,
+                "quote": "40%를 제 5 조(보험가입금액 한도 등)에서 정한 연간 보험가입금액의 한도 내에"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+                  "article": "제5조",
+                  "paragraph": 1,
+                  "quote": "5천만원 이내에서"
+                }
+              ],
+              "status": "needs_review"
+            }
+          ]
+        }
+      ],
+      "exclusions": [
+        {
+          "id": "p0/질병급여형/exclusion1",
+          "kind": "kcd",
+          "description": "정신 및 행동장애",
+          "coverage_code": "p0/질병급여형/EXCL_F04_F99",
+          "exception": "F04~F09, F20~F29, F30~F39, F40~F48, F51, F90~F98 관련 요양급여 의료비는 보상. 가입 당시 태아면 정신발달장애(F80~F89) 요양급여도 보상",
+          "section": "질병급여형",
+          "source": {
+            "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+            "section": "질병급여형",
+            "article": "제4조",
+            "paragraph": 2,
+            "quote": "정신 및 행동장애(F04∼F99)"
+          },
+          "status": "needs_review"
+        },
+        {
+          "id": "p0/질병급여형/exclusion2",
+          "kind": "kcd",
+          "description": "습관성 유산, 불임 및 인공수정관련 합병증 중 전액본인부담금과 가입일부터 2년 이내 의료비",
+          "coverage_code": "p0/질병급여형/EXCL_N96_N98",
+          "section": "질병급여형",
+          "source": {
+            "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+            "section": "질병급여형",
+            "article": "제4조",
+            "paragraph": 2,
+            "quote": "습관성 유산, 불임 및 인공수정관련 합병증(N96∼N98)"
+          },
+          "status": "needs_review"
+        },
+        {
+          "id": "p0/질병급여형/exclusion3",
+          "kind": "kcd",
+          "description": "임신, 출산(제왕절개 포함), 산후기",
+          "coverage_code": "p0/질병급여형/EXCL_O00_O99",
+          "exception": "가입일이 분만예정일 280일 이전이면 관련 치료 요양급여는 보상",
+          "section": "질병급여형",
+          "source": {
+            "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+            "section": "질병급여형",
+            "article": "제4조",
+            "paragraph": 2,
+            "quote": "산후기(O00∼O99)로 발생한 의료비"
+          },
+          "status": "needs_review"
+        },
+        {
+          "id": "p0/질병급여형/exclusion4",
+          "kind": "kcd",
+          "description": "선천성 뇌질환",
+          "coverage_code": "p0/질병급여형/EXCL_Q00_Q04",
+          "exception": "가입 당시 태아면 보상",
+          "section": "질병급여형",
+          "source": {
+            "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+            "section": "질병급여형",
+            "article": "제4조",
+            "paragraph": 2,
+            "quote": "선천성 뇌질환(Q00∼Q04)"
+          },
+          "status": "needs_review"
+        },
+        {
+          "id": "p0/질병급여형/exclusion5",
+          "kind": "kcd",
+          "description": "요실금",
+          "coverage_code": "p0/질병급여형/EXCL_URINARY",
+          "section": "질병급여형",
+          "source": {
+            "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+            "section": "질병급여형",
+            "article": "제4조",
+            "paragraph": 2,
+            "quote": "요실금(N39.3, N39.4, R32)"
+          },
+          "status": "needs_review"
+        },
+        {
+          "id": "p0/질병급여형/exclusion6",
+          "kind": "cost_item",
+          "description": "간병비",
+          "section": "질병급여형",
+          "source": {
+            "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+            "section": "질병급여형",
+            "article": "제4조",
+            "paragraph": 3,
+            "quote": "간병비"
+          },
+          "status": "needs_review"
+        },
+        {
+          "id": "p0/질병급여형/exclusion7",
+          "kind": "cause",
+          "description": "피보험자가 고의로 자신을 해친 경우",
+          "exception": "심신상실 등으로 자유로운 의사결정을 할 수 없는 상태였음이 증명되면 보상",
+          "section": "질병급여형",
+          "source": {
+            "part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관",
+            "section": "질병급여형",
+            "article": "제4조",
+            "paragraph": 1,
+            "quote": "피보험자가 고의로 자신을 해친 경우"
+          },
+          "status": "needs_review"
+        }
+      ]
+    }
+  ],
+  "coverage_codes": [
+    {"code": "p0/질병급여형/EXCL_F04_F99", "name": "정신 및 행동장애", "kcd": [{"start": "F04", "end": "F99"}],
+     "source": {"part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관", "section": "질병급여형", "article": "제4조", "paragraph": 2, "quote": "정신 및 행동장애(F04∼F99)"}},
+    {"code": "p0/질병급여형/EXCL_N96_N98", "name": "습관성 유산, 불임 및 인공수정관련 합병증", "kcd": [{"start": "N96", "end": "N98"}],
+     "source": {"part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관", "section": "질병급여형", "article": "제4조", "paragraph": 2, "quote": "(N96∼N98)"}},
+    {"code": "p0/질병급여형/EXCL_O00_O99", "name": "임신, 출산, 산후기", "kcd": [{"start": "O00", "end": "O99"}],
+     "source": {"part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관", "section": "질병급여형", "article": "제4조", "paragraph": 2, "quote": "(O00∼O99)"}},
+    {"code": "p0/질병급여형/EXCL_Q00_Q04", "name": "선천성 뇌질환", "kcd": [{"start": "Q00", "end": "Q04"}],
+     "source": {"part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관", "section": "질병급여형", "article": "제4조", "paragraph": 2, "quote": "선천성 뇌질환(Q00∼Q04)"}},
+    {"code": "p0/질병급여형/EXCL_URINARY", "name": "요실금",
+     "kcd": [{"start": "N39.3", "end": "N39.3"}, {"start": "N39.4", "end": "N39.4"}, {"start": "R32", "end": "R32"}],
+     "source": {"part": "삼성 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관", "section": "질병급여형", "article": "제4조", "paragraph": 2, "quote": "요실금(N39.3, N39.4, R32)"}}
+  ]
+}

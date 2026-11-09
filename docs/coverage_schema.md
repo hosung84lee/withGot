@@ -4,7 +4,7 @@
 보험금 계산 툴(MCP)은 이 구조를 입력으로 받고, 검증 단계는 이 구조의 모든 항목이 약관 원문에 근거하는지 확인합니다.
 
 - 모델 코드: [`src/schema/coverage.py`](../src/schema/coverage.py)
-- 관련 문서: 약관 구조화·검증 [terms.md](terms.md)
+- 관련 문서: 약관 구조화·검증 [terms.md](terms.md), 약관에서 이 데이터를 뽑는 방법 [coverage_extract.md](coverage_extract.md)
 
 > 실제 업무 시스템의 사고보장 구조(보장 → 위험률 → 위험유형 → 급부)를 **개념만** 참고했습니다.
 > 내부 테이블명·컬럼명·코드값은 이 저장소에 두지 않으며, 대응표가 필요하면 사내 문서에서 관리합니다.
@@ -121,9 +121,30 @@ Product
 - 변경된 필드 (예: `exemption_days 90 → 0`, 담보코드 KCD 범위 변경, `ratio 50/100 → 100/100`)
 - 각 변경점에 구·신 `source` 를 함께 표시
 
-## 7. 열린 질문 (업무 확인 필요)
+## 7. 실손보험 표현 (`Benefit.type="actual_cost"`)
+
+실손 2605 약관을 기준으로 추가한 필드입니다. 정액형 필드는 그대로 두고 덧붙였습니다.
+
+| 약관 내용 (실손 2605 주계약 《질병급여형》) | 표현 |
+|---|---|
+| 급여 입원: 본인부담금의 80% | `benefit.cost_type="covered"`, `benefit.ratio=80/100`, `risk.claim_reason="hospitalization"` |
+| 급여 통원: 본인부담금 − max(1만원, 20%, 본인부담률×의료비) | `benefit.deductible={amounts:[10000], ratios:[20/100], copay_rate:true, pick:"max"}` |
+| 의원은 1만원, 종합병원은 2만원 공제 | 규칙을 나누고 `conditions.facility` 에 의료기관 조건 |
+| 통원 1회당 20만원, 연간 5천만원 이내에서 계약자 선택 | `conditions.limit.amounts=[{amount:200000, per:"visit", selectable:true}, {amount:50000000, per:"year", …}]` |
+| 입원 자기부담이 연 200만원 넘으면 초과분 보상 | `benefit.copay_cap_annual=2000000` |
+| 계약 종료 후 180일까지 보상 (통원 최대 90회) | `conditions.extension={days:180, max_visits:90}` |
+| 건강보험 미적용 시 40% | 별도 규칙 + `special_conditions=[{type:"no_health_insurance"}]` |
+| 보장종목 (질병급여형·상해급여형) | `risk.section`, `source.section` |
+| 한도가 다른 조(제5조)에 있음 | `rule.extra_sources` |
+| 보상하지 않는 KCD·항목·사유 | `coverage.exclusions[]` (`kind: kcd \| cost_item \| cause`, KCD 는 `coverage_codes` 참조, 예외는 `exception` 글) |
+| 질병 전체를 보장 (담보코드 없음) | `risk.coverage_code` 비움 |
+
+`LimitPer`: `visit`(통원 1회) · `day` · `stay`(1회 입원) · `year`(보험연도) · `daily_average` · `event`.
+`CostType`: `covered`(급여) · `non_covered`(비급여) · `room_difference`(상급병실료 차액).
+
+## 8. 열린 질문 (업무 확인 필요)
 
 - 참조 조건 중 **공제일수**와 **감액일수**의 정확한 구분, **발생 구분** 코드의 의미
-- 특수 조건 유형 목록 (진단 확정, 기지급 여부 외)
+- 특수 조건 유형 목록 (진단 확정, 기지급 여부, 건강보험 미적용 외)
 - 지급 보험 상태 값의 범위
-- 실손보험(5세대) 표현: 급여·비급여 구분, 자기부담률·최소 공제금액, 연간 한도 → `Benefit.type="actual_cost"` 확장으로 설계 예정
+- 실손 공제금액 산식(본인부담률 곱)과 보상 제외의 예외 조건을 계산 툴에 어떻게 넘길지

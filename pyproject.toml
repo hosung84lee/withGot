@@ -31,6 +31,7 @@ packages = [
     "src/mcp_server",
     "src/skills",
     "src/terms",
+    "src/coverage_extract",
 ]
 
 [tool.ruff]
