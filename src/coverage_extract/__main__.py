@@ -4,13 +4,13 @@
 uv run python -m coverage_extract 약관.pdf --dry-run
 
 # 주계약 《질병급여형》만 OpenAI 로 추출해서 저장
-uv run python -m coverage_extract 약관.pdf --provider openai --section 질병급여형 --out out.json
+uv run python -m coverage_extract 약관.pdf --section 질병급여형 --out out.json
 
 # 이미 있는 사고보장 JSON(정답 파일 등)의 근거만 확인 (API 키 필요 없음)
 uv run python -m coverage_extract 약관.pdf --ground tests/fixtures/silson_2605_disease_covered.json
 
 # 추출해서 정답과 비교 (저장해 둔 결과를 다시 비교할 때는 --ground out.json --compare …)
-uv run python -m coverage_extract 약관.pdf --provider openai --section 질병급여형 \\
+uv run python -m coverage_extract 약관.pdf --section 질병급여형 \\
     --out out.json --compare tests/fixtures/silson_2605_disease_covered.json
 """
 
@@ -49,10 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("file", type=Path, help="약관 PDF 또는 TXT")
     ap.add_argument("--dry-run", action="store_true", help="추출 묶음만 출력 (LLM 호출 안 함)")
     ap.add_argument("--ground", type=Path, help="사고보장 JSON 의 근거만 확인 (LLM 호출 안 함)")
-    ap.add_argument(
-        "--provider", choices=["openai", "anthropic"], help="기본값: .env 의 DEFAULT_PROVIDER"
-    )
-    ap.add_argument("--model", help="기본값: .env 의 OPENAI_MODEL / ANTHROPIC_MODEL")
+    ap.add_argument("--model", help="OpenAI 모델. 기본값: .env 의 OPENAI_MODEL")
     ap.add_argument("--section", action="append", help="이 보장종목만 추출 (여러 번 지정 가능)")
     ap.add_argument("--out", type=Path, help="결과 JSON 저장 경로")
     ap.add_argument("--compare", type=Path, help="결과를 이 정답 JSON 과 비교")
@@ -78,7 +75,6 @@ def main(argv: list[str] | None = None) -> int:
 
         report = extract_coverage(
             doc,
-            provider=args.provider,
             model=args.model,
             sections=args.section,
             on_progress=lambda i, n, b: print(f"[{i}/{n}] {b.key} 추출 중…", file=sys.stderr),

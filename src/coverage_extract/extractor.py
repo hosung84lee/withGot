@@ -2,7 +2,7 @@
 
 묶음(약관 하나 × 보장종목 하나)마다 LLM 에 지급 규칙·보상 제외를 JSON 으로 받고,
 id 는 코드에서 다시 매긴 뒤(묶음끼리 겹치지 않게) grounding 으로 근거를 확인합니다.
-LLM 은 OpenAI·Anthropic 둘 다 쓸 수 있습니다 (agent.Agent). 기본값은 설정의 DEFAULT_PROVIDER.
+LLM 은 OpenAI (agent.Agent). 모델 기본값은 .env 의 OPENAI_MODEL.
 """
 
 import re
@@ -11,11 +11,10 @@ from collections.abc import Callable
 from pydantic import BaseModel, Field
 
 from agent import Agent
-from agent.providers import LLMProvider
+from agent.llm import OpenAIClient
 from backend.tracing import span
 from coverage_extract.bundles import Bundle, build_bundles
 from coverage_extract.grounding import GroundingReport, ground_product
-from schema.agent import ProviderName
 from schema.coverage import Coverage, CoverageCode, Exclusion, Product, Risk
 from schema.terms import TermsDocument
 from terms.analyzer import ask_json
@@ -146,7 +145,7 @@ def assemble(doc: TermsDocument, results: list[tuple[Bundle, SectionExtraction]]
 
 def extract_coverage(
     doc: TermsDocument,
-    provider: LLMProvider | ProviderName | None = None,
+    llm: OpenAIClient | None = None,
     model: str | None = None,
     sections: list[str] | None = None,
     on_progress: Callable[[int, int, Bundle], None] | None = None,
@@ -163,9 +162,7 @@ def extract_coverage(
         raise ExtractionError(
             "추출할 보장 묶음이 없습니다. 보장 조(보상내용 등)를 찾지 못했습니다."
         )
-    agent = Agent(
-        provider, model=model, system=SYSTEM, tools=[], max_turns=1, name="coverage-extractor"
-    )
+    agent = Agent(model, llm=llm, system=SYSTEM, tools=[], max_turns=1, name="coverage-extractor")
     results: list[tuple[Bundle, SectionExtraction]] = []
     for i, bundle in enumerate(bundles, start=1):
         if on_progress:

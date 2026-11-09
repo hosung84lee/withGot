@@ -48,12 +48,12 @@ copy .env.example .env
 notepad .env
 ```
 
-`.env` 에서 바꿀 값 (OpenAI 사용):
+`.env` 에서 바꿀 값 (앱은 OpenAI 전용, 팀원 PR #4):
 
 ```ini
-DEFAULT_PROVIDER=openai
-OPENAI_API_KEY=sk-...        # 해커톤에서 받은 키
-OPENAI_MODEL=gpt-5.5         # 쓸 모델 이름으로 바꿔도 됨
+OPENAI_API_KEY=sk-...             # 해커톤에서 받은 키
+OPENAI_MODEL=gpt-6-luna           # 기본값. 쓸 모델 이름으로 바꿔도 됨
+OPENAI_REASONING_EFFORT=none      # 설명은 .env.example 참고
 ```
 
 `git push` 처음 할 때 브라우저로 GitHub 로그인 창이 뜹니다 (Git Credential Manager).
@@ -63,10 +63,10 @@ macOS 라면 `brew install git uv` 후 같은 순서이고, `copy` 대신 `cp .e
 ## 3. 세팅 확인
 
 ```powershell
-# 빠른 테스트 (약 6초, 110개 통과 · 5개 건너뜀이 정상)
+# 빠른 테스트 (약 5초, 116개 통과 · 5개 건너뜀이 정상)
 uv run pytest
 
-# 실제 약관 PDF 테스트까지 (약 2분, 115개 통과가 정상)
+# 실제 약관 PDF 테스트까지 (약 2분, 121개 통과가 정상)
 uv run pytest --pdf
 
 # 사고보장 추출 묶음 보기 (API 키 없이)
@@ -98,7 +98,7 @@ withGot 최상위 `pytest` 는 `tests/` 만 봅니다.
 1. **실제 추출 1회** — 실손 2605 주계약 《질병급여형》 (묶음 1개, 약 7,700자)
    ```powershell
    uv run python -m coverage_extract "insurance-workbench/data/reference/policies/삼성생명_급여실손의료비보장보험_2605갱신형_약관_2026-09-23.pdf" `
-       --provider openai --section 질병급여형 --out out.json `
+       --section 질병급여형 --out out.json `
        --compare tests/fixtures/silson_2605_disease_covered.json
    ```
    출력의 `근거 확인 / 검토 필요` 와 `정답 비교: 값까지 일치 N%` 를 봅니다.
@@ -118,6 +118,7 @@ withGot 최상위 `pytest` 는 `tests/` 만 봅니다.
 - `insurance-workbench` 프로젝트와 약관 PDF 를 저장소에 추가, 약관 PDF 이름을 `회사_상품명_종류_기준일` 로 통일
 - 이전 브랜치(`feature/custom-agent`, `claude/terms-analysis-structure-validation-sqosfl`)를 main 에 머지하고 삭제
 - 최상위 `pytest` 가 `insurance-workbench` 테스트를 수집하지 않게 `testpaths = ["tests"]`
+- (팀원 PR #4) 앱을 **OpenAI 전용**으로 전환, workflow-id 기반 추적, Trace 목록 검색. 사고보장 추출도 이 구조(`Agent(model, llm=…)`)에 맞춤
 
 약관 구조화 (`src/terms/`) — 실제 약관 PDF 에서 찾은 문제를 하나씩 고침
 
@@ -153,7 +154,7 @@ withGot 최상위 `pytest` 는 `tests/` 만 봅니다.
   (`Deductible`: 정액·비율·본인부담률 중 큰 금액), 금액 한도(`AmountLimit`: 회당·연간 …), 자기부담 연간 상한,
   계약 종료 후 연장 보상(`Extension`), 보상 제외(`Exclusion`), 보장종목(`section`), 추가 근거(`extra_sources`).
 - **묶음** (`bundles.py`): 실손 2605 → 8묶음, 제도성 특약 제외.
-- **추출** (`extractor.py`): OpenAI/Anthropic, JSON 재시도, id 재지정.
+- **추출** (`extractor.py`): OpenAI (`agent.Agent`), JSON 재시도, id 재지정.
 - **근거 검증** (`grounding.py`): 인용문·숫자를 원문과 대조.
 - **정답 비교** (`compare.py`) + 정답 파일 `tests/fixtures/silson_2605_disease_covered.json` (규칙 4 + 제외 7).
 - **명령**: `python -m coverage_extract` (`--dry-run`, `--ground`, `--section`, `--out`, `--compare`).

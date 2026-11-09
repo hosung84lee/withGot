@@ -1,6 +1,6 @@
 """약관 구조화 결과 → 사고보장 데이터 추출 테스트.
 
-LLM 은 가짜 provider 로 바꿔서 API 키 없이 실행합니다.
+LLM 은 가짜 OpenAI 응답(tests/fakes.py)으로 바꿔서 API 키 없이 실행합니다.
 fixtures/silson_mini.txt 는 실손 2605 약관 모양(보장종목별 제3조·제4조, 공통 제5조 한도,
 제도성 특약)을 줄인 것이고, fixtures/silson_2605_disease_covered.json 은 실제 실손 2605
 주계약 《질병급여형》을 사람이 원문과 대조해 만든 정답입니다.
@@ -10,14 +10,13 @@ import json
 from pathlib import Path
 
 import pytest
+from fakes import fake_llm, gpt
 
-from agent.providers import LLMProvider
 from coverage_extract import build_bundles
 from coverage_extract.__main__ import main as cli_main
 from coverage_extract.compare import compare_products
 from coverage_extract.extractor import ExtractionError, extract_coverage
 from coverage_extract.grounding import ground_product, numbers_in
-from schema.agent import LLMResponse
 from schema.coverage import Product
 from terms import parse_terms
 from terms.extract import pdf_to_text
@@ -30,22 +29,13 @@ POLICIES = Path(__file__).parent.parent / "insurance-workbench" / "data" / "refe
 PART = "테스트 급여 실손의료비보장보험(2605)(갱신형, 무배당) 약관"
 
 
-class FakeProvider(LLMProvider):
-    name = "openai"
+def fake(replies: list[str]):
+    """차례로 replies 를 돌려주는 가짜 OpenAI 와 보낸 요청 목록 (tests/fakes.py)."""
+    return fake_llm([gpt({"content": r}, "stop") for r in replies])
 
-    def __init__(self, replies):
-        super().__init__("fake-model", 1000)
-        self.replies = iter(replies)
-        self.requests = []
 
-    def build_request(self, system, messages, tools):
-        return {"system": system, "messages": [m.content for m in messages]}
-
-    def send(self, request):
-        self.requests.append(request)
-        return LLMResponse(
-            text=next(self.replies), tool_calls=[], stop_reason="end", model="fake-model"
-        )
+def user_messages(call: dict) -> list[str]:
+    return [m["content"] for m in call["messages"] if m["role"] == "user"]
 
 
 @pytest.fixture(scope="module")
@@ -198,7 +188,7 @@ def test_no_bundles_for_non_benefit_terms():
     )
     assert build_bundles(doc) == []
     with pytest.raises(ExtractionError):
-        extract_coverage(doc, provider=FakeProvider([]))
+        extract_coverage(doc, llm=fake([])[0])
 
 
 # ---------------------------------------------------------------- 근거 검증
@@ -213,7 +203,7 @@ def test_numbers_in_korean_amounts():
 
 
 def _grounded(doc, reply):
-    return extract_coverage(doc, provider=FakeProvider([reply]), sections=["질병급여형"])
+    return extract_coverage(doc, llm=fake([reply])[0], sections=["질병급여형"])
 
 
 def test_extraction_grounded_and_ids_reassigned(doc):
@@ -257,18 +247,18 @@ def test_missing_article_is_error(doc):
 
 
 def test_extract_all_sections_one_request_each(doc):
-    provider = FakeProvider([disease_reply(), INJURY_REPLY])
-    report = extract_coverage(doc, provider=provider)
-    assert len(provider.requests) == 2
-    assert "보장종목: 상해급여형" in provider.requests[1]["messages"][0]
+    llm, calls = fake([disease_reply(), INJURY_REPLY])
+    report = extract_coverage(doc, llm=llm)
+    assert len(calls) == 2
+    assert "보장종목: 상해급여형" in user_messages(calls[1])[0]
     assert [r.id for r in report.product.rules()][-1] == "p0/상해급여형/hospitalization1/1"
     assert report.needs_review == 0
 
 
 def test_invalid_json_is_retried(doc):
-    provider = FakeProvider(["설명부터 할게요 {not json", disease_reply()])
-    report = extract_coverage(doc, provider=provider, sections=["질병급여형"])
-    assert len(provider.requests) == 2 and report.confirmed == 4
+    llm, calls = fake(["설명부터 할게요 {not json", disease_reply()])
+    report = extract_coverage(doc, llm=llm, sections=["질병급여형"])
+    assert len(calls) == 2 and report.confirmed == 4
 
 
 # ---------------------------------------------------------------- 정답 비교

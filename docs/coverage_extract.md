@@ -10,7 +10,7 @@
    ▼
 [추출 묶음]  coverage_extract/bundles.py     보장 조를 약관 × 보장종목 단위로 묶음 (LLM 없음)
    ▼
-[LLM 추출]   coverage_extract/extractor.py   묶음마다 지급 규칙·보상 제외를 JSON 으로 (OpenAI/Anthropic)
+[LLM 추출]   coverage_extract/extractor.py   묶음마다 지급 규칙·보상 제외를 JSON 으로 (OpenAI)
    ▼
 [근거 검증]  coverage_extract/grounding.py   인용문·숫자가 원문에 있는지 확인 → confirmed / needs_review
    ▼
@@ -27,7 +27,7 @@ uv run python -m coverage_extract "insurance-workbench/data/reference/policies/�
 uv run python -m coverage_extract "<위 PDF>" --ground tests/fixtures/silson_2605_disease_covered.json
 
 # 3) OpenAI 로 주계약 《질병급여형》만 추출 → 저장 → 정답과 비교  (.env 에 OPENAI_API_KEY 필요)
-uv run python -m coverage_extract "<위 PDF>" --provider openai --section 질병급여형 \
+uv run python -m coverage_extract "<위 PDF>" --section 질병급여형 \
     --out out.json --compare tests/fixtures/silson_2605_disease_covered.json
 
 # 4) 저장해 둔 결과를 API 호출 없이 다시 검증·비교
@@ -38,8 +38,7 @@ uv run python -m coverage_extract "<위 PDF>" --ground out.json --compare tests/
 |---|---|
 | `--dry-run` | 묶음 목록(약관 · 보장종목, 글자 수, 포함된 조)만 출력 |
 | `--ground FILE` | LLM 없이 FILE(사고보장 JSON, `--out` 결과 형식도 됨)의 근거만 확인 |
-| `--provider openai\|anthropic` | 기본값 `.env` 의 `DEFAULT_PROVIDER` |
-| `--model` | 기본값 `.env` 의 `OPENAI_MODEL` / `ANTHROPIC_MODEL` |
+| `--model` | OpenAI 모델. 기본값 `.env` 의 `OPENAI_MODEL` |
 | `--section 질병급여형` | 이 글자가 든 묶음만 추출 (여러 번 지정 가능). 비용·시간 절약용 |
 | `--out out.json` | `{"product": …, "issues": […]}` 저장 |
 | `--compare GOLDEN` | 결과를 정답 JSON 과 비교해서 일치율·차이 출력 |
@@ -58,7 +57,7 @@ doc = parse_terms(pdf_to_text("실손2605.pdf"))
 for b in build_bundles(doc):
     print(b.key, [a.label for a in b.articles])
 
-report = extract_coverage(doc, provider="openai", sections=["질병급여형"])
+report = extract_coverage(doc, sections=["질병급여형"])   # 모델 지정: model="gpt-6-luna"
 report.product          # schema.coverage.Product
 report.issues           # 근거 검증 문제 목록
 report.confirmed, report.needs_review

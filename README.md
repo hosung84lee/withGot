@@ -51,7 +51,7 @@ AI 로 조항별 위험(약관규제법 기준)을 검토합니다. AI 분석 �
 
 ```bash
 uv run python -m coverage_extract 약관.pdf --dry-run                       # 묶음 보기 (API 키 불필요)
-uv run python -m coverage_extract 약관.pdf --provider openai --section 질병급여형 --out out.json
+uv run python -m coverage_extract 약관.pdf --section 질병급여형 --out out.json   # OPENAI_API_KEY 필요
 ```
 
 자세한 내용: [docs/coverage_extract.md](docs/coverage_extract.md)
