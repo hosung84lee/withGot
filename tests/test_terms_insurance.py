@@ -219,6 +219,65 @@ def test_volume_reference_tuple():
     )
 
 
+# ---------------------------------------------------------------- 호·목 번호 (PDF 줄바꿈·상자)
+
+
+@pytest.mark.parametrize("between", ["", "\n109", "\n- 3 -\n"])
+def test_wrapped_sentence_end_is_not_mok(between):
+    # '…지급합니' / '다. 다만, …' 은 목 '다.' 가 아니라 이어지는 문장 (쪽 번호가 끼어도 같음)
+    doc = parse_terms(
+        "제1조 [보험금의 지급]\n"
+        "① 회사는 서류를 접수한 날부터 3영업일 이내에 보험금을 지급합니"
+        f"{between}\n"
+        "다. 다만, 조사가 필요한 때에는 10영업일 이내에 지급합니다.\n"
+        "② 회사는 지급 예정일을 안내합니다."
+    )
+    a = doc.articles[0]
+    assert [p.number for p in a.paragraphs] == [1, 2]
+    assert a.paragraphs[0].items == [] and "다만, 조사가" in a.paragraphs[0].text
+    assert codes(validate_structure(doc))["ITEM_NUMBER_GAP"] == 0
+
+
+def test_real_mok_da_still_parsed():
+    doc = parse_terms("제1조 [정의]\n① 다음과 같습니다.\n가. 하나\n나. 둘\n다. 셋")
+    assert [i.label for i in doc.articles[0].paragraphs[0].items] == ["가", "나", "다"]
+
+
+def test_appendix_header_without_brackets():
+    # '별표1 악성신생물 분류표(…)' 처럼 괄호 없는 별표 시작 줄. 뒤의 ①② 가 앞 조의 항이 되지 않음
+    doc = parse_terms(
+        "제43조 [예금보험에 의한 지급보장]\n"
+        "회사가 파산 등으로 보험금을 지급하지 못할 경우에는 예금보험공사가 지급을 보장합니다.\n"
+        "24\n"
+        "별표1 악성신생물 분류표(초기유방암, 기타피부암 제외)\n"
+        "① 약관에 규정하는 악성신생물은 다음에 적은 질병을 말합니다.\n"
+        "② 진단 시점에 확인된 경우 다시 판단하지 않습니다.\n"
+    )
+    assert [x.label for x in doc.appendices] == [
+        "별표 1 악성신생물 분류표(초기유방암, 기타피부암 제외)"
+    ]
+    assert [p.number for p in doc.articles[0].paragraphs] == [None]
+
+
+@pytest.mark.parametrize(
+    "line", ["별표1에 따른 질병을 말합니다.", "별표1 에서 정한 질병을 말합니다."]
+)
+def test_inline_appendix_mention_is_not_header(line):
+    doc = parse_terms(f"제1조 [정의]\n암이란\n{line}")
+    assert doc.appendices == []
+
+
+def test_box_label_before_first_item():
+    # '유의사항 1. …' 처럼 안내 상자 이름이 첫 호와 한 줄에 붙은 경우
+    doc = parse_terms(
+        "제2-14조 [해약환급금]\n"
+        "⑥ 회사는 경과기간별 해약환급금에 관한 표를 제공하여 드립니다.\n"
+        "유의사항 1. 이 특약은 해약률을 적용하는 상품입니다.\n"
+        "2. 해약률이란 계약자가 계약을 해지할 확률을 예측한 것을 말합니다."
+    )
+    assert [i.label for i in doc.articles[0].paragraphs[0].items] == ["1", "2"]
+
+
 # ---------------------------------------------------------------- 조항 인용
 # 예문은 실제 약관(실손 2605 등)에서 그대로 옮긴 문장입니다.
 
@@ -363,6 +422,8 @@ def test_real_volume_numbered_riders():
     found = codes(validate_structure(doc))
     assert found["PART_WITHOUT_ARTICLES"] == 0
     assert found["BROKEN_REFERENCE"] == 0
+    # 호·항 번호 경고 69건 → 2건 (남은 2건은 장애인전용보험전환특약 제1조의 '용어 해설' 상자)
+    assert found["ITEM_NUMBER_GAP"] + found["PARAGRAPH_NUMBER_GAP"] <= 2
     for title in ("고액치료비암진단특약", "소액질병보장특약", "암사망특약", "재진단암보장특약"):
         i = next(i for i, t in enumerate(titles) if t.startswith(title))
         arts = [a for a in doc.articles if a.part == i]

@@ -104,6 +104,10 @@ _PART_TITLE = re.compile(r"^\S.{1,80}\s?약관$")
 _PARENS = re.compile(r"\([^()]*\)")
 _PART_NOISE = re.compile(r"[,“”\"'‘’]|에서|할 때")
 _PART_NEXT = re.compile(r"^(※|제\s*1\s*(관|장|편|조))")
+# PDF 줄바꿈으로 '…지급합니' / '다. 다만, …' 처럼 잘린 문장 끝. '다.' 를 목 번호로 읽지 않음
+_WRAPPED_DA = re.compile(r"^다\.")
+# 안내 상자 이름이 첫 호와 한 줄에 붙은 경우 ('유의사항 1. 이 특약은 …')
+_BOX_LABEL = re.compile(r"^(유의사항|참고사항|참고)\s+(?=\d{1,2}\.\s)")
 # 여러 특약이 함께 쓰는 일반사항: '[특약 약관] 제1편 일반사항'
 _PART_BRACKET = re.compile(r"^\[(?:주계약|특약)\s*약관\]\s*(제\s*\d+\s*편\s*\S.{0,30})$")
 # 표지·목차의 분류 이름. 약관 제목으로 보지 않음
@@ -157,8 +161,14 @@ def _parse_appendix_header(line: str) -> str | None:
     if not m:
         return None
     opened, kind, num, closed, rest = m.groups()
-    if not opened and rest and not rest[0].isspace():
-        return None  # '별표1에 따른' 같은 본문 속 인용
+    if not opened and num and rest and not rest[0].isspace():
+        # '별표1 악성신생물 분류표(…)' 는 번호 뒤 공백이 정규식에 먹혀 rest 가 바로 시작함
+        if not re.match(r"^별\s*[표지]\s*\d+\s+\S", line) or rest.startswith(_PARTICLE_START):
+            return None  # '별표1에 따른' 같은 본문 속 인용
+        if rest.endswith(".") or len(rest) > 80:
+            return None
+    elif not opened and rest and not rest[0].isspace():
+        return None  # '별표에 따른' 같은 본문 속 인용
     if opened and not closed and not num and rest and not rest[0].isspace():
         return None
     label = f"{kind.replace(' ', '')} {num}".strip()
@@ -277,9 +287,17 @@ class _Builder:
         self.doc.appendices.append(self.appendix)
         self.annex = annex
 
-    def line(self, text: str, lineno: int) -> None:
-        """조 본문 안의 한 줄: 항 / 호 / 목 / 세목 / 이어지는 줄."""
+    def line(self, text: str, lineno: int, prev: str = "") -> None:
+        """조 본문 안의 한 줄: 항 / 호 / 목 / 세목 / 이어지는 줄.
+
+        prev 는 바로 앞의 원문 줄. '…합니' 로 끝났으면 '다.' 로 시작하는 줄은 목이 아니라 이어지는 문장.
+        """
         if self.article is None:
+            self._append(text)
+            return
+        if prev.endswith("니") and _WRAPPED_DA.match(text):
+            if self.last is None:
+                self.last = self._ensure_paragraph()
             self._append(text)
             return
 
@@ -547,7 +565,18 @@ def parse_terms(text: str) -> TermsDocument:
         if (h := _parse_article_header(line)) is not None:
             b.start_article(*h, line=lineno)
             continue
-        b.line(line, lineno)
+        # 바로 앞 원문 줄 (빈 줄·쪽 번호는 건너뜀: '…합니' / '109' / '다.' 처럼 쪽이 넘어가는 경우)
+        prev = next(
+            (
+                ln
+                for ln in reversed(lines[max(0, lineno - 6) : lineno - 1])
+                if ln and not _PAGE_NO.match(ln)
+            ),
+            "",
+        )
+        if m := _BOX_LABEL.match(line):  # '유의사항 1. …' → '1. …'
+            line = line[m.end() :]
+        b.line(line, lineno, prev)
     return b.finish()
 
 
