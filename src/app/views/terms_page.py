@@ -22,14 +22,7 @@ with st.sidebar:
     analyze = st.toggle(
         "AI 분석 실행", value=True, help="끄면 구조화와 구조 검증만 합니다 (API 키 불필요)."
     )
-    provider = st.selectbox(
-        "Provider",
-        ["anthropic", "openai"],
-        index=0 if settings.default_provider == "anthropic" else 1,
-        disabled=not analyze,
-    )
-    default_model = settings.anthropic_model if provider == "anthropic" else settings.openai_model
-    model = st.text_input("모델", value=default_model, disabled=not analyze)
+    model = st.text_input("OpenAI 모델", value=settings.openai_model, disabled=not analyze)
 
 tab_text, tab_file, tab_doc = st.tabs(["텍스트 붙여넣기", "파일 올리기", "문서 보관함"])
 run_args: dict | None = None
@@ -76,7 +69,6 @@ if run_args:
             report = run_terms_pipeline(
                 **run_args,
                 analyze=analyze,
-                provider=provider,
                 model=model or None,
                 on_step=on_step,
             )

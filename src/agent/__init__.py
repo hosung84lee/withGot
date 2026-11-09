@@ -1,4 +1,4 @@
 from agent.agent import Agent
-from agent.providers import get_provider
+from agent.llm import OpenAIClient
 
-__all__ = ["Agent", "get_provider"]
+__all__ = ["Agent", "OpenAIClient"]

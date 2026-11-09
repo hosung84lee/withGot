@@ -2,6 +2,8 @@
 
 단계: 입력 파싱 → 분석 → 결과 생성. 각 단계 시작 시 on_step 콜백을 호출해
 UI가 진행 상황을 표시할 수 있게 합니다.
+
+추적: 실행 1회 = workflow_id 1개 (mock_workflow-...), 단계마다 trace 1개.
 """
 
 import random
@@ -10,7 +12,7 @@ from collections import Counter
 from collections.abc import Callable
 from datetime import datetime
 
-from backend.tracing import span
+from backend.tracing import span, workflow
 from schema.workflow import StepResult, WorkflowResult
 
 STEPS = ["입력 파싱", "분석", "결과 생성"]
@@ -22,7 +24,12 @@ def _timed(name: str, fn: Callable[[], str], delay: float) -> StepResult:
         time.sleep(delay)  # 실제 처리 시간 흉내
         output = fn()
         s.set(output=output)
-    return StepResult(name=name, duration_sec=round(time.perf_counter() - start, 2), output=output)
+    return StepResult(
+        name=name,
+        duration_sec=round(time.perf_counter() - start, 2),
+        output=output,
+        trace_id=s.trace_id,
+    )
 
 
 def run_mock_workflow(
@@ -30,10 +37,10 @@ def run_mock_workflow(
     delay: float = 0.8,
     on_step: Callable[[int, str], None] | None = None,
 ) -> WorkflowResult:
-    with span("workflow", "mock_workflow", input={"text": text, "delay": delay}) as s:
+    with workflow("mock_workflow", input={"text": text, "delay": delay}) as wf:
         result = _run(text, delay, on_step)
-        result.workflow_id = s.trace_id
-        s.set(output=result.summary, keywords=result.keywords)
+        result.workflow_id = wf.id
+        wf.set(output=result.summary, keywords=result.keywords)
     return result
 
 

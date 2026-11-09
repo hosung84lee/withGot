@@ -1,11 +1,11 @@
-"""약관 구조화 / 검증 / 분석 테스트. LLM 은 가짜 provider 로 바꿔서 API 키 없이 실행합니다."""
+"""약관 구조화 / 검증 / 분석 테스트. LLM 은 가짜 OpenAIClient 로 바꿔서 API 키 없이 실행합니다."""
 
 import json
 from pathlib import Path
 
 import pytest
 
-from agent.providers import LLMProvider
+from agent.llm import OpenAIClient
 from schema.agent import LLMResponse
 from schema.terms import ClauseAnalysis, ClauseIssue, TermsAnalysis
 from terms import parse_terms, validate_analysis, validate_structure
@@ -221,14 +221,12 @@ def test_validate_analysis_detects_hallucination(doc):
     } <= set(by_code)
 
 
-# ---------------------------------------------------------------- AI 분석 (가짜 provider)
+# ---------------------------------------------------------------- AI 분석 (가짜 LLM)
 
 
-class FakeProvider(LLMProvider):
-    name = "anthropic"
-
+class FakeLLM(OpenAIClient):
     def __init__(self, replies):
-        super().__init__("fake-model", 1000)
+        super().__init__("fake-model", 1000, api_key="test")
         self.replies = iter(replies)
         self.requests = []
 
@@ -275,20 +273,20 @@ OVERVIEW = json.dumps(
 
 
 def test_analyze_terms_with_retry(doc):
-    provider = FakeProvider(
+    llm = FakeLLM(
         [
             "이건 JSON 이 아닙니다",  # 형식 오류 → 다시 요청
             "```json\n" + _clauses_json(doc) + "\n```",  # 코드블록이 붙어도 처리
             OVERVIEW,
         ]
     )
-    result = analyze_terms(doc, provider=provider)
+    result = analyze_terms(doc, llm=llm)
     assert len(result.clauses) == 8 and result.overview.parties == ["회사", "회원"]
     assert result.model == "fake-model"
     # 재요청에는 에러 내용이 포함되고, 조문은 '### 조 표기' 로 전달됨
-    assert "JSON 형식이 잘못되었습니다" in provider.requests[1]["messages"][-1]
-    assert "### 제3조의2 (개인정보 보호)" in provider.requests[0]["messages"][0]
-    assert provider.requests[0]["tools"] == []
+    assert "JSON 형식이 잘못되었습니다" in llm.requests[1]["messages"][-1]
+    assert "### 제3조의2 (개인정보 보호)" in llm.requests[0]["messages"][0]
+    assert llm.requests[0]["tools"] == []
     assert not [i for i in validate_analysis(doc, result) if i.severity != "info"]
 
 
@@ -296,13 +294,13 @@ def test_analyze_terms_chunks(doc):
     chunks = chunk_articles([a for a in doc.articles if not a.deleted], max_chars=300)
     assert len(chunks) > 1
     replies = [_clauses_json(doc, {a.label for a in c}) for c in chunks] + [OVERVIEW]
-    result = analyze_terms(doc, provider=FakeProvider(replies), chunk_chars=300)
+    result = analyze_terms(doc, llm=FakeLLM(replies), chunk_chars=300)
     assert [c.article for c in result.clauses] == [a.label for c in chunks for a in c]
 
 
 def test_analyze_terms_truncated(doc):
     with pytest.raises(AnalysisError, match="max_tokens"):
-        analyze_terms(doc, provider=FakeProvider([('{"clauses": [', "max_tokens")]))
+        analyze_terms(doc, llm=FakeLLM([('{"clauses": [', "max_tokens")]))
 
 
 def test_extract_json():
@@ -315,8 +313,8 @@ def test_extract_json():
 
 
 def test_pipeline_full(doc):
-    provider = FakeProvider([_clauses_json(doc), OVERVIEW])
-    report = run_terms_pipeline(SAMPLE, provider=provider)
+    llm = FakeLLM([_clauses_json(doc), OVERVIEW])
+    report = run_terms_pipeline(SAMPLE, llm=llm)
     assert report.trace_id and report.analysis and not report.analysis_error
     assert "BROKEN_REFERENCE" in codes(report.structure_issues)
     assert all(i.source == "analysis" for i in report.analysis_issues)
@@ -329,11 +327,11 @@ def test_pipeline_full(doc):
 
 
 def test_pipeline_analysis_failure_keeps_structure():
-    class Broken(FakeProvider):
+    class Broken(FakeLLM):
         def send(self, request):
             raise RuntimeError("API 키 없음")
 
-    report = run_terms_pipeline(SAMPLE, provider=Broken([]))
+    report = run_terms_pipeline(SAMPLE, llm=Broken([]))
     assert report.analysis is None and "API 키 없음" in report.analysis_error
     assert report.document.articles and report.structure_issues
 

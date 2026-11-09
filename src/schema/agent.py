@@ -1,10 +1,8 @@
-"""Provider와 무관한 agent 공용 데이터 모델."""
+"""agent 공용 데이터 모델."""
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
-
-ProviderName = Literal["anthropic", "openai"]
+from pydantic import BaseModel, Field
 
 
 class ToolSpec(BaseModel):
@@ -45,31 +43,22 @@ class ToolOutput(BaseModel):
 class AgentMessage(BaseModel):
     """대화 한 턴. role="tool" 은 도구 실행 결과."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     role: Literal["user", "assistant", "tool"]
     content: str = ""
     tool_calls: list[ToolCall] = Field(default_factory=list)
     tool_call_id: str | None = None
     is_error: bool = False
     attachments: list[Attachment] = Field(default_factory=list)  # user / tool 메시지의 파일
-    # provider 원본 응답(예: Claude thinking 블록). 같은 provider로 다시 보낼 때 그대로 사용.
-    raw: Any = Field(default=None, exclude=True)
-    raw_provider: ProviderName | None = Field(default=None, exclude=True)
 
 
-StopReason = Literal["end", "tool_use", "max_tokens", "refusal", "pause"]
+StopReason = Literal["end", "tool_use", "max_tokens", "refusal"]
 
 
 class LLMResponse(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     text: str
-    thinking: str = ""  # Claude 추론 요약 (display=summarized 일 때)
     tool_calls: list[ToolCall]
     stop_reason: StopReason
     model: str
-    raw: Any = Field(default=None, exclude=True)
     usage: dict[str, int] = Field(default_factory=dict)
 
 
@@ -87,3 +76,4 @@ class AgentResult(BaseModel):
     tool_traces: list[ToolTrace]
     messages: list[AgentMessage]
     trace_id: str | None = None
+    workflow_id: str | None = None

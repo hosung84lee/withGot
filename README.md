@@ -22,7 +22,7 @@ src/
 ├── backend/      # 설정, DB, 파일 저장, 실행 추적(tracing)
 ├── schema/       # Pydantic 모델
 ├── workflow/     # 처리 파이프라인
-├── agent/        # Agent 루프 + providers/ (anthropic, openai)
+├── agent/        # Agent 루프 + OpenAI 호출(llm.py)
 ├── mcp_server/   # MCP 서버
 ├── skills/       # Agent 도구 (@tool 로 등록)
 ├── terms/        # 약관 구조화 · 검증 · AI 분석
@@ -45,7 +45,7 @@ from terms import parse_terms, validate_structure, run_terms_pipeline
 
 doc = parse_terms(text)
 issues = validate_structure(doc)
-report = run_terms_pipeline(text, provider="anthropic")
+report = run_terms_pipeline(text)
 ```
 
 ## Agent
@@ -53,14 +53,14 @@ report = run_terms_pipeline(text, provider="anthropic")
 - 사용법과 동작 구조: [docs/agent.md](docs/agent.md)
 - 실행 추적과 디버깅: [docs/tracing.md](docs/tracing.md)
 
-`.env`에 사용할 provider의 API 키를 넣고 앱의 **Agent** 화면에서 provider/모델을 골라 대화합니다.
+`.env`에 `OPENAI_API_KEY`를 넣고 앱의 **Agent** 화면에서 대화합니다.
 PDF·이미지는 채팅에 첨부하거나, 사이드바 **문서 보관함**에 올려 두면 agent가 직접 찾아 읽습니다.
 실행 과정은 **Trace** 화면에서 단계별로 볼 수 있습니다.
 
 ```python
 from agent import Agent
 
-result = Agent("anthropic").run("지금 서울 몇 시야?")   # 또는 "openai"
+result = Agent().run("지금 서울 몇 시야?")  # 모델 지정: Agent("gpt-5.5")
 print(result.output, result.tool_traces)
 ```
 
