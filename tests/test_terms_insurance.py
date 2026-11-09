@@ -342,15 +342,74 @@ def test_inline_appendix_mention_is_not_header(line):
     assert doc.appendices == []
 
 
-def test_box_label_before_first_item():
-    # '유의사항 1. …' 처럼 안내 상자 이름이 첫 호와 한 줄에 붙은 경우
+@pytest.mark.parametrize("label", ["유의사항 1.", "유의\n사항\n1."])
+def test_notice_box_numbers_are_text(label):
+    # '유의사항' 상자의 1. 2. 는 약관 호가 아니라 안내문. 상자 이름이 첫 번호와 붙어 있어도 같음
     doc = parse_terms(
         "제2-14조 [해약환급금]\n"
         "⑥ 회사는 경과기간별 해약환급금에 관한 표를 제공하여 드립니다.\n"
-        "유의사항 1. 이 특약은 해약률을 적용하는 상품입니다.\n"
+        f"{label} 이 특약은 해약률을 적용하는 상품입니다.\n"
         "2. 해약률이란 계약자가 계약을 해지할 확률을 예측한 것을 말합니다."
     )
-    assert [i.label for i in doc.articles[0].paragraphs[0].items] == ["1", "2"]
+    p = doc.articles[0].paragraphs[0]
+    assert p.number == 6 and p.items == []
+    assert "해약률이란" in p.text
+    assert codes(validate_structure(doc))["ITEM_NUMBER_GAP"] == 0
+
+
+# 실손 2605 제13조 모양: 본문 호 1. 뒤에 '용어 해설' 상자(<직업> 1. 2. <직무>)가 끼고 본문 2. 3. 이 이어짐
+TERM_BOX = """\
+제13조 [상해보험계약 후 알릴 의무]
+① 계약자는 다음 각 호 중 어느 하나의 변경이 발생한 경우 회사에 알려야 합니다.
+1. 보험증권 등에 기재된 직업 또는 직무의 변경
+용어
+해설
+<직업>
+1. 생계유지 등을 위하여 일정한 기간 동안 계속하여 종사하는 일
+2. "1"에 해당하지 않는 경우에는 개인의 사회적 신분에 따르는 위치를 말합니다.
+<직무>
+직책이나 직업상 책임을 지고 담당하여 맡은 일을 말합니다.
+2. 보험증권 등에 기재된 피보험자의 운전 목적이 변경된 경우
+3. 보험증권 등에 기재된 피보험자의 운전 여부가 변경된 경우
+② 회사는 위험이 변경된 경우 보험료를 다시 계산합니다.
+설명 <피보험자의 위험 변경에 따른 계약내용 변경 절차>
+계약자가 알린 사실을 회사가 확인하고, 위험이 증가한 경우 보험료를 더 받습니다.
+<위험이 감소한 경우>
+① 보험료를 줄입니다.
+③ 회사는 제2항에 따라 계약내용을 변경할 때 위험이 감소된 경우에는 보험료를 감액합니다.
+"""
+
+
+def test_term_box_numbers_do_not_break_outer_items():
+    a = parse_terms(TERM_BOX).articles[0]
+    # 상자 안의 ①② 는 항이 아니고, 상자 뒤의 ③ 은 본문 제3항
+    assert [p.number for p in a.paragraphs] == [1, 2, 3]
+    # 상자 안의 1. 2. 는 호가 아니고, '<직무>' 소제목 뒤의 2. 부터 본문 호가 이어짐
+    assert [i.label for i in a.paragraphs[0].items] == ["1", "2", "3"]
+    assert "생계유지" in a.paragraphs[0].items[0].text  # 상자 내용은 버리지 않고 글로 남김
+    assert "운전 목적" in a.paragraphs[0].items[1].text
+    assert "보험료를 더 받습니다" in a.paragraphs[1].text
+    assert "보험료를 줄입니다" in a.paragraphs[1].text  # 상자 안의 ① 은 제2항의 글
+    assert codes(validate_structure(parse_terms(TERM_BOX)))["PARAGRAPH_NUMBER_GAP"] == 0
+
+
+def test_box_ends_at_next_article():
+    doc = parse_terms(
+        "제1조 [목적]\n① 본문\n설명 <예시>\n1. 상자 안\n제2조 [정의]\n1. 첫째\n2. 둘째"
+    )
+    assert [i.label for i in doc.articles[1].paragraphs[0].items] == ["1", "2"]
+
+
+def test_appendix_header_without_number():
+    # '별표 재 해 분 류 표', '별표 보험금을 지급할 때의 적립 이율 계산' (번호 없는 별표)
+    doc = parse_terms(
+        "제30조 [주계약 약관의 준용]\n이 특약에서 정하지 않은 사항은 주계약 약관을 따릅니다.\n"
+        "별표 보험금을 지급할 때의 적립 이율 계산\n"
+        "1. 보험금 지급기일의 다음 날부터 30일 이내 기간: 보험계약대출이율\n"
+        "2. 계약자 등의 책임있는 사유로 지연된 때에는 이자를 지급하지 않습니다."
+    )
+    assert [x.label for x in doc.appendices] == ["별표 보험금을 지급할 때의 적립 이율 계산"]
+    assert doc.articles[0].paragraphs[0].items == []
 
 
 # ---------------------------------------------------------------- 조항 인용
@@ -510,6 +569,8 @@ def test_real_volume_numbered_riders():
 def test_real_small_rider_unchanged():
     doc = _real("중증간병연금전환특약")
     assert len(doc.articles) == 20
-    # 예전 47건 중 '제3조(…) 제10항' 처럼 조 제목 뒤의 항을 따로 세던 2건이 한 인용으로 합쳐짐
-    assert sum(len(a.references) for a in doc.articles) == 45
+    # 예전 47건 중 '제3조(…) 제10항' 처럼 조 제목 뒤의 항을 따로 세던 2건이 한 인용으로 합쳐지고,
+    # 제18조 뒤의 '별표 보험금을 지급할 때의 적립 이율 계산' 이 별표로 분리되며 그 안의 인용 1건이 빠짐
+    assert sum(len(a.references) for a in doc.articles) == 44
+    assert any(x.label.startswith("별표 보험금을 지급할 때") for x in doc.appendices)
     assert codes(validate_structure(doc))["BROKEN_REFERENCE"] == 0

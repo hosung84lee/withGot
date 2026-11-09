@@ -109,8 +109,14 @@ _PART_NEXT = re.compile(r"^(※|제\s*1\s*(관|장|편|조))")
 _WRAPPED_DA = re.compile(r"^다\.")
 # 보장종목 구분 줄: '《질병급여형》', '《 질 병급여형 》' (PDF 에서 글자 사이 공백이 끼기도 함)
 _SECTION = re.compile(r"^《\s*([^》]{1,30}?)\s*》$")
-# 안내 상자 이름이 첫 호와 한 줄에 붙은 경우 ('유의사항 1. 이 특약은 …')
-_BOX_LABEL = re.compile(r"^(유의사항|참고사항|참고)\s+(?=\d{1,2}\.\s)")
+# 본문 옆 안내 상자의 시작: '용어' + '해설' 두 줄, '설명 <제목>', '유의'(+'사항'),
+# 상자 이름이 첫 번호와 한 줄에 붙은 '유의사항 1. 이 특약은 …'
+_BOX_START = re.compile(
+    r"^(용어\s*해설|설명|유의|유의사항)(\s*<.*>)?$|^(유의사항|참고사항)\s+\d{1,2}\.\s"
+)
+# 상자 안의 소제목 '<직업>', '<소득세법 제59조의4(특별세액공제)>'. 상자 안 번호를 처음부터 다시 셈
+_BOX_SUBTITLE = re.compile(r"^<.*>$")
+_MOK_LETTERS = "가나다라마바사아자차카타파하"
 # 여러 특약이 함께 쓰는 일반사항: '[특약 약관] 제1편 일반사항'
 _PART_BRACKET = re.compile(r"^\[(?:주계약|특약)\s*약관\]\s*(제\s*\d+\s*편\s*\S.{0,30})$")
 # 표지·목차의 분류 이름. 약관 제목으로 보지 않음
@@ -171,7 +177,11 @@ def _parse_appendix_header(line: str) -> str | None:
         if rest.endswith(".") or len(rest) > 80:
             return None
     elif not opened and rest and not rest[0].isspace():
-        return None  # '별표에 따른' 같은 본문 속 인용
+        # 번호 없는 '별표 재해분류표', '별표 보험금을 지급할 때의 적립 이율 계산'
+        if not re.match(r"^별\s*[표지]\s+\S", line) or rest.startswith(_PARTICLE_START):
+            return None  # '별표에 따른' 같은 본문 속 인용
+        if rest.endswith(".") or len(rest) > 40:
+            return None
     if opened and not closed and not num and rest and not rest[0].isspace():
         return None
     label = f"{kind.replace(' ', '')} {num}".strip()
@@ -196,9 +206,11 @@ class _Builder:
         self.last: Item | Paragraph | None = None  # 이어지는 줄을 붙일 대상
         self.part: int | None = None  # 현재 약관 (doc.parts 위치)
         self.annex = False  # 부록 안: 새 약관이나 제1관이 나올 때까지 원문 그대로 보관
-        self.section: str | None = (
-            None  # 보장종목 구분 ('《질병급여형》'). 관·약관·별표가 바뀌면 닫힘
-        )
+        # 보장종목 구분 ('《질병급여형》'). 관·약관·별표가 바뀌면 닫힘
+        self.section: str | None = None
+        # 본문 옆 안내 상자 안: 상자 자체의 마지막 번호 {"항": n, "호": n, "목": n}. 상자 밖이면 None
+        self.box: dict[str, int] | None = None
+        self.box_pending = False  # '용어' 줄 다음에 '해설' 이 오면 상자 시작
 
     # --- 이어 쓰기
     def _append(self, text: str) -> None:
@@ -213,6 +225,52 @@ class _Builder:
 
     def _reset_items(self) -> None:
         self.items = {"호": None, "목": None, "세목": None}
+        self.box, self.box_pending = None, False
+
+    def _outer_expected(self, kind: str) -> int:
+        """본문(상자 밖)에서 다음에 올 항·호·목 번호."""
+        if kind == "항":
+            assert self.article is not None
+            nums = [p.number for p in self.article.paragraphs if p.number is not None]
+            return (nums[-1] if nums else 0) + 1
+        item = self.items[kind]
+        if item is None:
+            return 1
+        if kind == "목":
+            return _MOK_LETTERS.find(item.label) + 2
+        return int(item.label) + 1 if item.label.isdigit() else 1
+
+    def _box_line(self, text: str) -> bool:
+        """안내 상자 안의 줄이면 본문에 글로 붙이고 True. 상자가 끝나는 줄이면 상자를 닫고 False.
+
+        상자는 끝 표시가 없어서 번호로 판단합니다. 본문이 기다리는 다음 번호이면서 상자 안의
+        다음 번호는 아닌 표시('<직무>' 소제목 뒤의 '2.', 상자 뒤의 '⑩')가 나오면 본문으로 돌아갑니다.
+        """
+        assert self.box is not None
+        if _BOX_SUBTITLE.match(text):
+            self.box = {"항": 0, "호": 0, "목": 0}
+        else:
+            marker: tuple[str, int] | None = None
+            if n := circled_value(text[0]):
+                marker = ("항", n)
+            elif m := _HO.match(text):
+                marker = ("호", int(m.group(1)))
+            elif m := _MOK.match(text):
+                marker = ("목", _MOK_LETTERS.find(m.group(1)) + 1)
+            if marker is not None:
+                kind, n = marker
+                if n == self._outer_expected(kind) and n != self.box[kind] + 1:
+                    self.box = None
+                    return False
+                self.box[kind] = n
+                if kind == "항":
+                    self.box["호"] = self.box["목"] = 0
+                elif kind == "호":
+                    self.box["목"] = 0
+        if self.last is None:
+            self.last = self._ensure_paragraph()
+        self._append(text)
+        return True
 
     def _close_addendum_text(self) -> None:
         if self.addendum_lines:
@@ -303,6 +361,7 @@ class _Builder:
         self.doc.appendices.append(self.appendix)
         self.annex = annex
         self.section = None
+        self.box, self.box_pending = None, False
 
     def line(self, text: str, lineno: int, prev: str = "") -> None:
         """조 본문 안의 한 줄: 항 / 호 / 목 / 세목 / 이어지는 줄.
@@ -316,6 +375,14 @@ class _Builder:
             if self.last is None:
                 self.last = self._ensure_paragraph()
             self._append(text)
+            return
+
+        # 본문 옆 안내 상자 ('용어' / '해설', '설명 <…>', '유의'): 상자 안의 번호는 구조로 읽지 않음
+        starts_box = bool(_BOX_START.match(text)) or (self.box_pending and text == "해설")
+        self.box_pending = text == "용어"
+        if starts_box:
+            self.box = {"항": 0, "호": 0, "목": 0}
+        if self.box is not None and self._box_line(text):
             return
 
         n = circled_value(text[0])
@@ -594,8 +661,6 @@ def parse_terms(text: str) -> TermsDocument:
             ),
             "",
         )
-        if m := _BOX_LABEL.match(line):  # '유의사항 1. …' → '1. …'
-            line = line[m.end() :]
         b.line(line, lineno, prev)
     return b.finish()
 
