@@ -1,0 +1,21 @@
+import { expect, test } from '@playwright/test'
+
+test('lists both fixed-benefit drafts with separate clause sources and a JSON download', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: '약관 라이브러리', exact: true }).click()
+  const catalog = page.getByLabel('정액보험 약관')
+  const wholeLife = catalog.getByRole('article').filter({ hasText: '한화생명 H종신보험 무배당' })
+  const cancer = catalog.getByRole('article').filter({ hasText: '무배당 건강보험 암보험' })
+  await expect(wholeLife).toContainText('검토 전 초안')
+  await expect(cancer).toContainText('검토 전 초안')
+  await wholeLife.getByText('지급 기준과 근거 조항', { exact: true }).click()
+  await expect(wholeLife.getByRole('link', { name: '별표 1 주 6 · PDF 59쪽' })).toHaveAttribute('href', /hanwhalife\.com.*#page=59$/)
+  await cancer.getByText('지급 기준과 근거 조항', { exact: true }).click()
+  await expect(cancer.getByRole('link', { name: '제9조 제5항 · PDF 4쪽' })).toHaveAttribute('href', /lina\.co\.kr.*#page=4$/)
+  const dataUrl = await catalog.getByRole('link', { name: '구조화 초안 JSON' }).getAttribute('href')
+  const data = await (await page.request.get(dataUrl!)).json()
+  expect(data.map((policy: { reviewStatus: string }) => policy.reviewStatus)).toEqual(['draft', 'draft'])
+  await page.getByPlaceholder('상품명 또는 보험사 검색').fill('라이나')
+  await expect(cancer).toBeVisible()
+  await expect(wholeLife).toHaveCount(0)
+})

@@ -1,0 +1,37 @@
+.fixed-policy-catalog { display: grid; gap: 12px; margin: 20px 0; }
+.fixed-policy-catalog a { color: #286340; text-decoration: underline; }
+.fixed-policy-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.fixed-policy-card { padding: 14px; border: 1px solid #dce5da; border-radius: 8px; background: #f6f9f6; font-size: 13px; line-height: 1.65; }
+.fixed-policy-card h3 { margin: 4px 0; }
+.fixed-policy-scope { margin: 8px 0; }
+.fixed-policy-card details { margin-top: 8px; }
+.fixed-policy-card summary { cursor: pointer; font-weight: 600; }
+.fixed-policy-card ul { padding-left: 18px; margin: 8px 0; }
+.fixed-policy-card li { margin-bottom: 8px; }
+.fixed-policy-card h4 { margin-top: 8px; }
+.fixed-policy-links { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+.policy-library-card, .claim-document-card { word-break: keep-all; overflow-wrap: anywhere; }
+.policy-card-actions { display: flex; align-items: center; min-height: 32px; margin-top: 6px; color: #415d4c; }
+.claim-document-card { height: 100%; display: grid; gap: 8px; align-content: start; padding: 12px; border: 1px solid #dce5da; border-radius: 8px; background: #f6f9f6; color: #344b3d; font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.document-card-list { display: grid; gap: 8px; }
+.claim-document-header { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 9px; }
+.claim-document-header > svg { color: #347c55; flex: none; }
+.claim-document-name { flex: 1 1 90px; min-width: 0; }
+.claim-document-name h3 { font-size: 14px; }
+.claim-document-name p { color: #536e5e; }
+.claim-document-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.claim-document-actions a { color: #286340; text-decoration: underline; }
+.fixed-demo { display: grid; gap: 14px; margin-bottom: 16px; color: #244336; }
+.fixed-demo > p { font-size: 13px; line-height: 1.6; }
+.fixed-demo-controls, .fixed-demo-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.fixed-demo-controls label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; min-width: 0; }
+.fixed-demo-controls select { width: 100%; padding: 9px; border: 1px solid #789280; border-radius: 6px; background: white; color: inherit; font: inherit; }
+.fixed-demo dl { margin-top: 8px; }
+.fixed-demo dl > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; padding: 5px 0; border-top: 1px solid #dce5da; }
+.fixed-demo dd { margin: 0; font-weight: 600; }
+.fixed-demo-amount { font-size: clamp(22px, 3vw, 34px); font-weight: 700; overflow-wrap: anywhere; }
+.fixed-demo details ul { list-style: none; padding: 8px 0 0; }
+.fixed-demo a { color: #286340; text-decoration: underline; }
+@media (max-width: 800px) {
+  .fixed-demo-controls, .fixed-demo-grid { grid-template-columns: minmax(0, 1fr); }
+}
