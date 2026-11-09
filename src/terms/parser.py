@@ -66,13 +66,27 @@ _PAGE_NO = re.compile(r"^[-–—\s]*\d+\s*(/\s*\d+)?[-–—\s]*$|^-\s*\d+\s*-$
 _OPEN = {"(": ")", "[": "]", "【": "】", "〔": "〕", "［": "］", "<": ">"}
 # 조 번호 바로 뒤에 오면 조 제목이 아니라 문장 속 인용 ('제3조에 따라')
 _PARTICLE_START = tuple("에의및와과를을는은이가로으부까도만")
+# 괄호 제목 뒤에 오면 인용 ('제2조의6(…의 정의)에 따라', '제3조(보험금의 지급사유) 제1항 제2호의')
+# '이' 는 본문 첫 글자일 수 있어 뺌 ('제1조(목적) 이 약관은')
+_INLINE_AFTER_TITLE = re.compile(
+    r"^(에|의|및|와|과|를|을|로|으로|부터|까지|에서|[,、]|제\s*\d+\s*(항|호))"
+)
 
+# 조 번호 뒤의 조 제목 괄호 ('제8조(보험금의 지급절차) 제4항'). 괄호 한 겹까지 중첩 허용
+_REF_TITLE = r"[(（](?:[^()（）]|[(（][^()（）]*[)）]){1,60}[)）]"
 _REF = re.compile(
-    r"제\s*(\d+)\s*조(?:\s*의\s*(\d+))?(?:\s*제\s*(\d+)\s*항)?(?:\s*제\s*(\d+)\s*호)?"
+    r"제\s*(\d+)\s*조(?:\s*의\s*(\d+))?"
+    rf"(?:\s*{_REF_TITLE})?"
+    r"(?:\s*제\s*(\d+)\s*항)?(?:\s*제\s*(\d+)\s*호)?"
 )
 _PARA_REF = re.compile(r"제\s*(\d+)\s*항")
-# 인용 바로 앞이 법령 이름이면 다른 법의 조문 ('상법 제638조', '「약관법」 제6조')
-_EXTERNAL_BEFORE = re.compile(r"(」|』|법|법률|령|규칙|규정|조례|협약|고시)\s*$")
+# 인용 바로 앞이 법령 이름이면 다른 법의 조문 ('상법 제638조', '「약관법」 제6조', '｢전자서명법｣')
+# '방법' 은 법령 이름이 아님 ('보험금을 받는 방법 제9조')
+_EXTERNAL_BEFORE = re.compile(r"(」|』|｣|(?<!방)법|법률|령|규칙|규정|조례|협약|고시)\s*$")
+# 앞 인용과 이어지는 범위·나열 ('제1항부터 제7항', '제15항 및 제19항', '제4조부터 제5조의3까지')
+_REF_CONNECT = re.compile(r"^(?:\s|[,·ㆍ~～\-]|및|또는|부터|에서|내지|와|과)*$")
+# 법령 이름을 찾을 때 볼 앞 문맥 길이
+_REF_LOOKBACK = 40
 # 목차 줄 끝의 쪽 번호
 _TOC_PAGE = re.compile(r"^\d{1,3}$")
 _TOC_TITLE_PAGE = re.compile(r"^\S.*\s\d{1,3}$")
@@ -109,6 +123,8 @@ def _parse_article_header(line: str) -> tuple[int, int | None, str | None, str, 
         return None
     number, sub, rest = int(m.group(1)), m.group(2), m.group(3).strip()
     title, body = _split_title(rest)
+    if title is not None and _INLINE_AFTER_TITLE.match(body):
+        return None  # 줄 맨 앞에 온 '제N조(제목)에 따라' 같은 인용
     if title is None:
         if not rest or circled_value(rest[0]) or rest.startswith("삭제"):
             pass
@@ -525,26 +541,49 @@ def extract_references(text: str) -> list[ArticleRef]:
     """본문 속 '제N조(의M)(제K항)(제L호)' 인용. 다른 법령 조문은 제외합니다.
 
     '제2항' 처럼 조 없이 항만 쓴 인용은 article=0 (같은 조) 으로 둡니다.
+    단, 앞 인용에 범위·나열로 이어지면 ('제3조(보상내용) 제1항부터 제7항') 앞 인용의 조를 따릅니다.
+    법령 이름은 PDF 줄바꿈으로 앞 줄에 있을 수 있어 줄을 넘어 앞 문맥을 봅니다.
     """
-    refs: list[ArticleRef] = []
+    events: list[tuple[int, re.Match[str], bool]] = []  # (시작 위치, 매치, 조 인용인지)
     taken: list[tuple[int, int]] = []
     for m in _REF.finditer(text):
         taken.append(m.span())
-        before = text[max(0, m.start() - 30) : m.start()].split("\n")[-1]
-        if _EXTERNAL_BEFORE.search(before):
-            continue
-        art, sub, para, item = m.groups()
-        refs.append(
-            ArticleRef(
-                text=m.group(0),
-                article=int(art),
-                sub=int(sub) if sub else None,
-                paragraph=int(para) if para else None,
-                item=int(item) if item else None,
-            )
-        )
+        events.append((m.start(), m, True))
     for m in _PARA_REF.finditer(text):
-        if any(s <= m.start() < e for s, e in taken):
+        if not any(s <= m.start() < e for s, e in taken):
+            events.append((m.start(), m, False))
+    events.sort(key=lambda e: e[0])
+
+    refs: list[ArticleRef] = []
+    # 직전 인용: (끝 위치, 다른 법령인지, 조 번호, 의N). 조 번호 0 은 '같은 조'
+    last: tuple[int, bool, int, int | None] | None = None
+    for start, m, is_article in events:
+        chained = last is not None and bool(_REF_CONNECT.match(text[last[0] : start]))
+        if is_article:
+            art, sub, para, item = m.groups()
+            before = text[max(0, start - _REF_LOOKBACK) : start].replace("\n", " ")
+            external = bool(_EXTERNAL_BEFORE.search(before)) or (chained and last[1])
+            last = (m.end(), external, int(art), int(sub) if sub else None)
+            if external:
+                continue
+            refs.append(
+                ArticleRef(
+                    text=m.group(0),
+                    article=int(art),
+                    sub=int(sub) if sub else None,
+                    paragraph=int(para) if para else None,
+                    item=int(item) if item else None,
+                )
+            )
             continue
-        refs.append(ArticleRef(text=m.group(0), article=0, paragraph=int(m.group(1))))
+        # 조 없이 항만 쓴 인용
+        if chained:
+            _, external, art, sub = last
+        else:
+            external, art, sub = False, 0, None
+        last = (m.end(), external, art, sub)
+        if not external:
+            refs.append(
+                ArticleRef(text=m.group(0), article=art, sub=sub, paragraph=int(m.group(1)))
+            )
     return refs

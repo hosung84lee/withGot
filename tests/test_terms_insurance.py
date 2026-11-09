@@ -11,6 +11,7 @@ import pytest
 
 from terms import parse_terms, validate_structure
 from terms.extract import pdf_to_text
+from terms.parser import extract_references
 
 BUNDLE = (Path(__file__).parent / "fixtures" / "insurance_bundle.txt").read_text(encoding="utf-8")
 POLICIES = Path(__file__).parent.parent / "insurance-workbench" / "data" / "reference" / "policies"
@@ -120,6 +121,89 @@ def test_plain_terms_without_parts_unchanged():
     assert doc.parts == [] and [a.part for a in doc.articles] == [None, None]
 
 
+# ---------------------------------------------------------------- 조항 인용
+# 예문은 실제 약관(실손 2605 등)에서 그대로 옮긴 문장입니다.
+
+
+def ref_tuples(text):
+    return [(r.article, r.sub, r.paragraph, r.item) for r in extract_references(text)]
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # 조 제목 괄호 뒤의 항
+        ("다만, 제 8 조(보험금의 지급절차) 제 4 항에도 불구하고", [(8, None, 4, None)]),
+        ("제18조(약관 교부 및 설명 의무 등) 제6항에 따른 의무", [(18, None, 6, None)]),
+        # 제목 안에 괄호가 한 겹 더 있는 경우
+        (
+            "제28조(보험료의 납입연체로 인해 해지된 계약의 부활(효력회복)) 제2항에 따라",
+            [(28, None, 2, None)],
+        ),
+        # 범위·나열로 이어지는 항은 앞 인용의 조를 따름
+        (
+            "제3조(보상내용) 제1항부터 제7항에 따라 보상합니다.",
+            [(3, None, 1, None), (3, None, 7, None)],
+        ),
+        (
+            "제 3 조(보상내용) 제 1 항, 제 2 항 및 제 4 항부터 제 8 항에 따라",
+            [(3, None, 1, None), (3, None, 2, None), (3, None, 4, None), (3, None, 8, None)],
+        ),
+        (
+            "[제3조(계약재개에 관한 사항) 제15항 및 제19항 포함]",
+            [(3, None, 15, None), (3, None, 19, None)],
+        ),
+        ("제16조(보험계약의 성립) 제2항에서 제4항 및", [(16, None, 2, None), (16, None, 4, None)]),
+        # 이어지지 않는 항은 예전처럼 같은 조
+        (
+            "제5조를 따르고, 이 경우 제2항을 준용합니다.",
+            [(5, None, None, None), (0, None, 2, None)],
+        ),
+    ],
+)
+def test_reference_after_title_and_ranges(text, expected):
+    assert ref_tuples(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # 법령 이름이 PDF 줄바꿈으로 앞 줄에 있음
+        "「의료법」 제 3 조의 4 에 의한 상급종합병원, 동법\n제 3 조의 3 에 의한 종합병원",
+        "상법 시행령\n제 44 조의2 에 정하는 바에 따라",
+        # 반각 괄호 ｢ ｣
+        "｢ 전자서명법｣ 제 2 조 제 2 호에 따른 전자서명",
+        "｢ 금융소비자 보호에 관한 법률 시행령｣ 제 38조제4 항의 각 호",
+        # 다른 법령 조문의 범위·나열
+        "「본인일부부담금 산정특례에 관한 기준(보건복지부 고시)」 제4조부터 제5조의3까지",
+        "「국민건강보험법」 제42조 제1항 및 제2항",
+    ],
+)
+def test_external_law_references_excluded(text):
+    assert ref_tuples(text) == []
+
+
+def test_method_is_not_a_law_name():
+    # '방법' 은 '…법' 으로 끝나지만 법령 이름이 아님
+    assert ref_tuples("보험금을 받는 방법\n제9조(보험금을 받는 방법의 변경)에 따라") == [
+        (9, None, None, None)
+    ]
+
+
+def test_wrapped_inline_reference_is_not_article_header():
+    # PDF 줄바꿈으로 '제2조의6(…)에 따라' 가 줄 맨 앞에 와도 새 조로 보지 않음
+    doc = parse_terms(
+        "제4조 [보험금 지급에 관한 세부규정]\n"
+        "⑤ 제2조의5(“비침습 방광암”의 정의 및 진단 확정) 및\n"
+        "제2조의6(“대장점막내암”의 정의 및 진단 확정)에 따라 암의 정의에서 제외됩니다.\n"
+        "⑥ 제1항의 경우에도 같습니다.\n"
+        "제5조(목적) 이 약관은 보험계약에 관한 사항을 정합니다."
+    )
+    assert [a.label for a in doc.articles] == ["제4조", "제5조"]
+    assert [p.number for p in doc.articles[0].paragraphs] == [5, 6]
+    assert doc.articles[1].full_text() == "이 약관은 보험계약에 관한 사항을 정합니다."
+
+
 # ---------------------------------------------------------------- 실제 약관 PDF
 
 
@@ -169,9 +253,13 @@ def test_real_silson_2605_validation(silson_2605):
     assert found["ARTICLE_DUPLICATE"] <= 6
     assert found["ARTICLE_ORDER"] <= 5
     assert found["EMPTY_ARTICLE"] == 0
+    # 조 제목 괄호·다른 법령 인용을 잘못 읽어 생기던 오류 38건이 없어야 함
+    assert found["BROKEN_REFERENCE"] == 0
 
 
 def test_real_small_rider_unchanged():
     doc = _real("중증간병연금전환특약")
     assert len(doc.articles) == 20
-    assert sum(len(a.references) for a in doc.articles) == 47
+    # 예전 47건 중 '제3조(…) 제10항' 처럼 조 제목 뒤의 항을 따로 세던 2건이 한 인용으로 합쳐짐
+    assert sum(len(a.references) for a in doc.articles) == 45
+    assert codes(validate_structure(doc))["BROKEN_REFERENCE"] == 0
