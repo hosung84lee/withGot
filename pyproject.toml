@@ -39,3 +39,4 @@ line-length = 100
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["pdf: 실제 약관 PDF 를 읽는 느린 테스트. 기본으로 건너뛰고 `pytest --pdf` 로 실행"]

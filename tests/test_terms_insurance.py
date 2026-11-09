@@ -1,7 +1,8 @@
 """보험사 약관 PDF 모양(목차·안내 페이지, 주계약+특약 묶음, 부록 법령)에 대한 구조화 테스트.
 
 fixtures/insurance_bundle.txt 는 저장소의 실제 삼성생명 약관 PDF 에서 뽑은 텍스트 모양을
-줄여서 옮긴 것입니다. 실제 PDF 테스트는 insurance-workbench 의 약관 파일이 있을 때만 돕니다.
+줄여서 옮긴 것입니다. 실제 PDF 테스트(@pytest.mark.pdf)는 느려서 기본으로 건너뛰고,
+`pytest --pdf` 로 실행합니다. insurance-workbench 의 약관 파일이 없으면 그때도 건너뜁니다.
 """
 
 from collections import Counter
@@ -557,6 +558,7 @@ def _article_line_share(doc, total_lines: int) -> float:
     return owned / total_lines
 
 
+@pytest.mark.pdf
 def test_real_silson_2605_structure(silson_2605):
     doc = silson_2605
     titles = [p.title for p in doc.parts]
@@ -570,6 +572,7 @@ def test_real_silson_2605_structure(silson_2605):
     assert not any(a.part is None for a in doc.articles)
 
 
+@pytest.mark.pdf
 def test_real_silson_2605_validation(silson_2605):
     found = codes(validate_structure(silson_2605))
     # 《질병급여형》《상해급여형》 등 보장종목마다 제3조·제4조를 따로 두는 구성은 중복·순서 문제가 아님
@@ -582,6 +585,7 @@ def test_real_silson_2605_validation(silson_2605):
     assert found["BROKEN_REFERENCE"] == 0
 
 
+@pytest.mark.pdf
 def test_real_volume_numbered_riders():
     # 인터넷비갱신암보험: 공통 일반사항(제1-N조)과 특약 4개(제2-N조)가 편-조 번호
     doc = _real("삼성생명_인터넷비갱신암보험_2601")
@@ -598,6 +602,7 @@ def test_real_volume_numbered_riders():
         assert len(arts) >= 20 and all(a.volume == 2 for a in arts), title
 
 
+@pytest.mark.pdf
 def test_real_small_rider_unchanged():
     doc = _real("중증간병연금전환특약")
     assert len(doc.articles) == 20

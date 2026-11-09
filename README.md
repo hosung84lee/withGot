@@ -67,3 +67,6 @@ print(result.output, result.tool_traces)
 도구 추가: `src/skills/` 에 함수를 만들고 `@tool` 을 붙이면 됩니다 (타입 힌트 → JSON Schema 자동 생성, docstring → 설명).
 
 테스트: `uv run pytest`
+
+실제 약관 PDF(`insurance-workbench/data/reference/policies/`)를 읽는 느린 테스트는 기본으로 건너뜁니다.
+약관 구조화(`src/terms/`)를 고쳤다면 `uv run pytest --pdf` 로 함께 돌려 주세요 (PDF 텍스트 추출 때문에 1분 넘게 걸립니다).
