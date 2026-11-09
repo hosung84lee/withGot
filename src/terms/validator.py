@@ -135,22 +135,36 @@ def _check_article_numbers(
     def lb(n: int) -> str:
         return article_label(n, volume=volume)
 
-    seen = Counter((a.number, a.sub) for a in arts)
+    # 보장종목(《질병급여형》 등)마다 같은 번호의 조를 따로 둘 수 있어 보장종목까지 키에 넣음
+    seen = Counter((a.number, a.sub, a.section) for a in arts)
     for a in arts:
-        if seen[(a.number, a.sub)] > 1:
+        key = (a.number, a.sub, a.section)
+        if seen[key] > 1:
+            where = f"《{a.section}》 " if a.section else ""
             issues.append(
                 _issue(
                     "error",
                     "ARTICLE_DUPLICATE",
-                    f"{a.label}가 {seen[(a.number, a.sub)]}번 나옵니다.",
+                    f"{where}{a.label}가 {seen[key]}번 나옵니다.",
                     a,
                 )
             )
-            seen[(a.number, a.sub)] = 0  # 한 번만 보고
+            seen[key] = 0  # 한 번만 보고
 
     mains = [a for a in arts if a.sub is None]
     expected = 1
+    # 보장종목이 바뀌면 번호는 보장종목 구간이 시작할 때의 번호부터 다시 이어짐
+    # (《질병급여형》 제3조·제4조, 《상해급여형》 제3조·제4조, 그 뒤 제5조)
+    section, branch_start, reached = None, 1, 1
     for a in mains:
+        if a.section != section:
+            if a.section is None:
+                expected = reached  # 보장종목 구간이 끝나면 가장 큰 번호 다음부터
+            elif section is None:
+                branch_start = expected
+            else:
+                expected = branch_start
+            section = a.section
         if a.number > expected:
             missing = (
                 lb(expected) if a.number == expected + 1 else f"{lb(expected)}~{lb(a.number - 1)}"
@@ -168,6 +182,7 @@ def _check_article_numbers(
                 )
             )
         expected = max(expected, a.number + 1)
+        reached = max(reached, expected)
 
     for a in arts:  # 제N조의M 은 제N조 뒤에 있어야 함
         if a.sub is not None and not any(m.number == a.number for m in mains):
@@ -258,27 +273,39 @@ def _count_items(a: Article, paragraph: int | None) -> int:
 def _check_references(doc: TermsDocument) -> list[ValidationIssue]:
     issues = []
     # 약관(part)별 본문 조. 같은 약관 안에서 먼저 찾고, 없으면 다른 약관(주계약 등)에서 찾음
-    # 키: (편, 조, 의N). 편-조 번호가 아니면 편은 None
+    # 키: (편, 조, 의N). 편-조 번호가 아니면 편은 None.
+    # 보장종목마다 같은 번호의 조가 있을 수 있어 후보를 모두 두고, 보장종목이 맞는 조를 고름
     Key = tuple[int | None, int, int | None]
-    body_by_part: dict[int | None, dict[Key, Article]] = defaultdict(dict)
-    body_any: dict[Key, Article] = {}
+    body_by_part: dict[int | None, dict[Key, list[Article]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
+    body_any: dict[Key, list[Article]] = defaultdict(list)
     for x in doc.body_articles:
-        body_by_part[x.part].setdefault((x.volume, x.number, x.sub), x)
-        body_any.setdefault((x.volume, x.number, x.sub), x)
+        body_by_part[x.part][(x.volume, x.number, x.sub)].append(x)
+        body_any[(x.volume, x.number, x.sub)].append(x)
+
+    def pick(cands: list[Article], section: str | None) -> Article | None:
+        """인용에 보장종목이 있으면 ('《상해급여형》 제3조') 그 보장종목, 없으면 인용한 조의 보장종목."""
+        if not cands:
+            return None
+        return next((c for c in cands if c.section == section), cands[0])
+
     for a in doc.articles:
-        group = {
-            (x.volume, x.number, x.sub): x
-            for x in doc.articles
-            if x.addendum == a.addendum and x.part == a.part
-        }
+        group: dict[Key, list[Article]] = defaultdict(list)
+        for x in doc.articles:
+            if x.addendum == a.addendum and x.part == a.part:
+                group[(x.volume, x.number, x.sub)].append(x)
         for ref in a.references:
             if ref.article == 0:  # 같은 조의 항
                 target = a
             else:
                 key = (ref.volume, ref.article, ref.sub)
-                body = body_by_part[a.part].get(key) or body_any.get(key)
+                section = ref.section or a.section
+                body = pick(body_by_part[a.part].get(key, []), section) or pick(
+                    body_any.get(key, []), section
+                )
                 # 부칙에서는 같은 부칙 안의 조를 먼저 찾고, 없으면 본문에서 찾음
-                target = (group.get(key) or body) if a.addendum else body
+                target = (pick(group.get(key, []), section) or body) if a.addendum else body
                 if target is None:
                     issues.append(
                         _issue(

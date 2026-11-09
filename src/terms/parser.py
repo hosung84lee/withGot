@@ -78,6 +78,7 @@ _INLINE_AFTER_TITLE = re.compile(
 # 조 번호 뒤의 조 제목 괄호 ('제8조(보험금의 지급절차) 제4항'). 괄호 한 겹까지 중첩 허용
 _REF_TITLE = r"[(（](?:[^()（）]|[(（][^()（）]*[)）]){1,60}[)）]"
 _REF = re.compile(
+    r"(?:《\s*([^》]{1,30}?)\s*》\s*)?"  # 보장종목 ('《상해비급여형》 제3조')
     r"제\s*(?:(\d+)\s*-\s*)?(\d+)\s*조(?:\s*의\s*(\d+))?"
     rf"(?:\s*{_REF_TITLE})?"
     r"(?:\s*제\s*(\d+)\s*항)?(?:\s*제\s*(\d+)\s*호)?"
@@ -106,6 +107,8 @@ _PART_NOISE = re.compile(r"[,“”\"'‘’]|에서|할 때")
 _PART_NEXT = re.compile(r"^(※|제\s*1\s*(관|장|편|조))")
 # PDF 줄바꿈으로 '…지급합니' / '다. 다만, …' 처럼 잘린 문장 끝. '다.' 를 목 번호로 읽지 않음
 _WRAPPED_DA = re.compile(r"^다\.")
+# 보장종목 구분 줄: '《질병급여형》', '《 질 병급여형 》' (PDF 에서 글자 사이 공백이 끼기도 함)
+_SECTION = re.compile(r"^《\s*([^》]{1,30}?)\s*》$")
 # 안내 상자 이름이 첫 호와 한 줄에 붙은 경우 ('유의사항 1. 이 특약은 …')
 _BOX_LABEL = re.compile(r"^(유의사항|참고사항|참고)\s+(?=\d{1,2}\.\s)")
 # 여러 특약이 함께 쓰는 일반사항: '[특약 약관] 제1편 일반사항'
@@ -193,6 +196,9 @@ class _Builder:
         self.last: Item | Paragraph | None = None  # 이어지는 줄을 붙일 대상
         self.part: int | None = None  # 현재 약관 (doc.parts 위치)
         self.annex = False  # 부록 안: 새 약관이나 제1관이 나올 때까지 원문 그대로 보관
+        self.section: str | None = (
+            None  # 보장종목 구분 ('《질병급여형》'). 관·약관·별표가 바뀌면 닫힘
+        )
 
     # --- 이어 쓰기
     def _append(self, text: str) -> None:
@@ -228,6 +234,14 @@ class _Builder:
         self.doc.headings.append(h)
         self.article = self.paragraph = None
         self.last = None
+        self.section = None
+        self._reset_items()
+
+    def start_section(self, name: str) -> None:
+        """보장종목 구분 줄. 이후의 조는 이 보장종목 소속 (제3조·제4조를 보장종목마다 따로 둠)."""
+        self.section = re.sub(r"\s+", "", name)
+        self.article = self.paragraph = None
+        self.last = None
         self._reset_items()
 
     def start_article(
@@ -250,6 +264,7 @@ class _Builder:
             path=[] if self.addendum else [h.label for h in self.stack],
             addendum=self.addendum or None,
             part=self.part,
+            section=self.section,
             line=line,
         )
         self.doc.articles.append(self.article)
@@ -277,6 +292,7 @@ class _Builder:
         self.article = self.paragraph = None
         self.appendix = None
         self.annex = False
+        self.section = None
         self.addendum = 0
         self.last = None
         self._reset_items()
@@ -286,6 +302,7 @@ class _Builder:
         self.appendix = Appendix(label=label, text="", line=line)
         self.doc.appendices.append(self.appendix)
         self.annex = annex
+        self.section = None
 
     def line(self, text: str, lineno: int, prev: str = "") -> None:
         """조 본문 안의 한 줄: 항 / 호 / 목 / 세목 / 이어지는 줄.
@@ -562,6 +579,9 @@ def parse_terms(text: str) -> TermsDocument:
         if (hm := _heading_match(line)) and not b.addendum:
             b.heading(hm[0], hm[1], hm[2], lineno)
             continue
+        if m := _SECTION.match(line):
+            b.start_section(m.group(1))
+            continue
         if (h := _parse_article_header(line)) is not None:
             b.start_article(*h, line=lineno)
             continue
@@ -601,16 +621,17 @@ def extract_references(text: str) -> list[ArticleRef]:
     events.sort(key=lambda e: e[0])
 
     refs: list[ArticleRef] = []
-    # 직전 인용: (끝 위치, 다른 법령인지, 조 번호, 의N, 편). 조 번호 0 은 '같은 조'
-    last: tuple[int, bool, int, int | None, int | None] | None = None
+    # 직전 인용: (끝 위치, 다른 법령인지, 조 번호, 의N, 편, 보장종목). 조 번호 0 은 '같은 조'
+    last: tuple[int, bool, int, int | None, int | None, str | None] | None = None
     for start, m, is_article in events:
         chained = last is not None and bool(_REF_CONNECT.match(text[last[0] : start]))
         if is_article:
-            vol, art, sub, para, item = m.groups()
+            sec, vol, art, sub, para, item = m.groups()
             volume = int(vol) if vol else None
+            section = re.sub(r"\s+", "", sec) if sec else None
             before = text[max(0, start - _REF_LOOKBACK) : start].replace("\n", " ")
             external = bool(_EXTERNAL_BEFORE.search(before)) or (chained and last[1])
-            last = (m.end(), external, int(art), int(sub) if sub else None, volume)
+            last = (m.end(), external, int(art), int(sub) if sub else None, volume, section)
             if external:
                 continue
             refs.append(
@@ -621,15 +642,16 @@ def extract_references(text: str) -> list[ArticleRef]:
                     paragraph=int(para) if para else None,
                     item=int(item) if item else None,
                     volume=volume,
+                    section=section,
                 )
             )
             continue
         # 조 없이 항만 쓴 인용
         if chained:
-            _, external, art, sub, volume = last
+            _, external, art, sub, volume, section = last
         else:
-            external, art, sub, volume = False, 0, None, None
-        last = (m.end(), external, art, sub, volume)
+            external, art, sub, volume, section = False, 0, None, None, None
+        last = (m.end(), external, art, sub, volume, section)
         if not external:
             refs.append(
                 ArticleRef(
@@ -638,6 +660,7 @@ def extract_references(text: str) -> list[ArticleRef]:
                     sub=sub,
                     paragraph=int(m.group(1)),
                     volume=volume,
+                    section=section,
                 )
             )
     return refs

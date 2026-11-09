@@ -219,6 +219,81 @@ def test_volume_reference_tuple():
     )
 
 
+# ---------------------------------------------------------------- 보장종목 구분 (《질병급여형》)
+# 실손 약관은 보장종목마다 제3조(보상내용)·제4조(보상하지 않는 사항)를 따로 둠
+
+SECTION_TERMS = """\
+제1관 일반사항
+제1조 [보장종목]
+이 보험은 질병급여형과 상해급여형으로 구성되어 있습니다.
+제2조 [용어의 정의]
+이 약관에서 사용하는 용어의 뜻은 별표와 같습니다.
+제2관 보상하는 사항
+《 질 병급여형 》
+제3조 [보상내용]
+① 회사는 질병으로 입원한 경우 보상합니다.
+제4조 [보상하지 않는 사항]
+회사는 고의로 생긴 손해는 보상하지 않습니다.
+《상해급여형》
+제3조 [보상내용]
+① 회사는 상해로 입원한 경우 보상합니다.
+② 통원한 경우에도 보상합니다.
+제4조 [보상하지 않는 사항]
+제3조 제2항의 통원은 하루 1회로 합니다.
+제3관 보험금의 지급
+제5조 [보험금의 청구]
+《상해급여형》 제3조(보상내용) 제2항의 보험금은 영수증을 제출하여 청구합니다.
+"""
+
+
+@pytest.fixture(scope="module")
+def section_doc():
+    return parse_terms(SECTION_TERMS)
+
+
+def test_sections_assigned(section_doc):
+    got = [(a.label, a.section) for a in section_doc.articles]
+    assert got == [
+        ("제1조", None),
+        ("제2조", None),
+        ("제3조", "질병급여형"),  # PDF 의 글자 사이 공백은 지움
+        ("제4조", "질병급여형"),
+        ("제3조", "상해급여형"),
+        ("제4조", "상해급여형"),
+        ("제5조", None),  # 다음 관이 시작되면 보장종목 구분이 끝남
+    ]
+    # 구분 줄 자체는 앞 조의 본문에 붙지 않음
+    assert "《" not in section_doc.find("제2조").full_text()
+
+
+def test_sections_validation(section_doc):
+    found = codes(validate_structure(section_doc))
+    for code in ("ARTICLE_DUPLICATE", "ARTICLE_ORDER", "ARTICLE_NUMBER_GAP", "BROKEN_REFERENCE"):
+        assert found[code] == 0, code
+
+
+def test_section_references(section_doc):
+    # '《상해급여형》 제3조 제2항' 과, 상해급여형 제4조 안의 '제3조 제2항' 은 둘 다 상해급여형 제3조
+    # (질병급여형 제3조에는 제2항이 없어서 잘못 고르면 BROKEN_REFERENCE)
+    last = section_doc.articles[-1]
+    assert [(r.section, r.article, r.paragraph) for r in last.references] == [("상해급여형", 3, 2)]
+    inner = next(
+        a for a in section_doc.articles if a.label == "제4조" and a.section == "상해급여형"
+    )
+    assert [(r.section, r.article, r.paragraph) for r in inner.references] == [(None, 3, 2)]
+
+
+def test_duplicate_within_section_still_reported():
+    # 같은 구간 안에서 번호가 겹치면 약관 원문 오류 (인터넷암보험 특약의 제2조의9 두 개)
+    doc = parse_terms(
+        "제2조의8 [대장점막내암의 정의]\n본문\n"
+        "제2조의9 [특약의 보장개시일]\n본문\n"
+        "제2조의9 [AJCC 암병기설정매뉴얼 관련 유의사항]\n본문"
+    )
+    dup = [i.message for i in validate_structure(doc) if i.code == "ARTICLE_DUPLICATE"]
+    assert dup == ["제2조의9가 2번 나옵니다."]
+
+
 # ---------------------------------------------------------------- 호·목 번호 (PDF 줄바꿈·상자)
 
 
@@ -406,9 +481,11 @@ def test_real_silson_2605_structure(silson_2605):
 
 def test_real_silson_2605_validation(silson_2605):
     found = codes(validate_structure(silson_2605))
-    # 남은 중복은 주계약·특약 안의 《질병급여형》《상해급여형》 제3조·제4조 (약관 원문 구성)
-    assert found["ARTICLE_DUPLICATE"] <= 6
-    assert found["ARTICLE_ORDER"] <= 5
+    # 《질병급여형》《상해급여형》 등 보장종목마다 제3조·제4조를 따로 두는 구성은 중복·순서 문제가 아님
+    assert found["ARTICLE_DUPLICATE"] == 0
+    assert found["ARTICLE_ORDER"] == 0
+    sections = {a.section for a in silson_2605.articles if a.section}
+    assert {"질병급여형", "상해급여형", "질병비급여형", "상해비급여형"} <= sections
     assert found["EMPTY_ARTICLE"] == 0
     # 조 제목 괄호·다른 법령 인용을 잘못 읽어 생기던 오류 38건이 없어야 함
     assert found["BROKEN_REFERENCE"] == 0

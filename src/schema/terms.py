@@ -46,6 +46,7 @@ class ArticleRef(BaseModel):
     paragraph: int | None = None
     item: int | None = None
     volume: int | None = None  # 편-조 번호의 편 ('제2-14조' → 2)
+    section: str | None = None  # 앞에 붙은 보장종목 ('《상해급여형》 제3조' → '상해급여형')
 
     @property
     def article_label(self) -> str:
@@ -73,6 +74,8 @@ class Article(BaseModel):
     number: int
     sub: int | None = None  # 제12조의2
     volume: int | None = None  # 편-조 번호의 편 ('제2-14조' → 2). 조 번호는 편마다 1부터
+    # 보장종목 구분 ('《질병급여형》' 아래의 조 → '질병급여형'). 보장종목마다 제3조·제4조를 따로 둠
+    section: str | None = None
     title: str | None = None
     deleted: bool = False  # '삭제' 표시된 조
     paragraphs: list[Paragraph] = Field(default_factory=list)
