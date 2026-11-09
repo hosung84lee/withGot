@@ -2,6 +2,8 @@
 
 Streamlit 기반 앱.
 
+> 새 PC 에서 시작한다면 [docs/HACKATHON.md](docs/HACKATHON.md) 부터 보세요 (환경 세팅, 현재 상태, 다음 할 일).
+
 ## 실행
 
 ```bash
@@ -15,8 +17,11 @@ MCP 서버: `uv run python -m mcp_server.server`
 ## 폴더 구조
 
 ```
-docs/             # 문서 (agent.md, tracing.md, terms.md, coverage_schema.md)
-tests/            # pytest
+docs/             # 문서 (HACKATHON.md, agent.md, tracing.md, terms.md, coverage_schema.md, coverage_extract.md)
+tests/            # pytest (실제 약관 PDF 테스트는 --pdf)
+tools/
+└── terms_viewer/ # 약관 구조화 뷰어 HTML 만들기 (build.py)
+insurance-workbench/  # 별도 프로젝트 (FastAPI + React). 약관 PDF: data/reference/policies/
 src/
 ├── app/          # Streamlit UI (main.py + views/)
 ├── backend/      # 설정, DB, 파일 저장, 실행 추적(tracing)
@@ -26,6 +31,7 @@ src/
 ├── mcp_server/   # MCP 서버
 ├── skills/       # Agent 도구 (@tool 로 등록)
 ├── terms/        # 약관 구조화 · 검증 · AI 분석
+├── coverage_extract/  # 구조화된 약관 → 사고보장 데이터 (묶음 · LLM 추출 · 근거 검증 · 정답 비교)
 └── data/
     ├── pdf/
     ├── image/
@@ -37,6 +43,18 @@ src/
 앱의 **약관 분석** 화면에서 약관(PDF/TXT/붙여넣기)을 조·항·호·목으로 구조화하고, 구조를 검증한 뒤
 AI 로 조항별 위험(약관규제법 기준)을 검토합니다. AI 분석 결과가 원문에 근거하는지도 다시 검증합니다.
 자세한 내용: [docs/terms.md](docs/terms.md)
+
+## 사고보장 데이터 추출
+
+구조화된 약관에서 보상 규칙(보상률·공제금액·한도)과 보상 제외를 뽑아 표준 JSON 으로 만들고,
+모든 항목의 인용문·숫자가 원문에 있는지 확인합니다. 실손 2605 기준.
+
+```bash
+uv run python -m coverage_extract 약관.pdf --dry-run                       # 묶음 보기 (API 키 불필요)
+uv run python -m coverage_extract 약관.pdf --provider openai --section 질병급여형 --out out.json
+```
+
+자세한 내용: [docs/coverage_extract.md](docs/coverage_extract.md)
 
 약관에서 뽑은 보장 정보를 담는 표준 구조(사고보장 Canonical Schema) 설계: [docs/coverage_schema.md](docs/coverage_schema.md)
 

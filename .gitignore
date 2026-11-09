@@ -12,3 +12,6 @@ src/data/pdf/*
 src/data/image/*
 src/data/db/*
 !src/data/**/.gitkeep
+
+# 약관 구조화 뷰어 결과 (tools/terms_viewer/build.py 로 다시 만듦)
+tools/terms_viewer/out/

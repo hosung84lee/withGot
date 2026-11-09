@@ -1,0 +1,650 @@
+<title>약관 구조화 뷰어</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+KR:wght@400;600&display=swap">
+<style>
+/* Layout: a single working column — pipeline strip, source coverage map, then tree + article detail side by side, references and checks below. */
+:root {
+  --bg: #f5f7f8;
+  --surface: #ffffff;
+  --sunk: #eceff1;
+  --line: #d5dbdf;
+  --fg: #1b2328;
+  --muted: #5d6a72;
+  --accent: #0f6e70;
+  --accent-soft: #d8eeee;
+
+  --k-preamble: #a9b3b9;
+  --k-part: #1c2c5c;
+  --k-heading: #2f4fa3;
+  --k-article: #12898b;
+  --k-appendix: #b0457e;
+  --k-annex: #c9a227;
+  --k-addendum: #7b8a2e;
+
+  --sev-error: #c23a2b;
+  --sev-error-bg: #fbe5e2;
+  --sev-warning: #a86a00;
+  --sev-warning-bg: #fbefd8;
+  --sev-info: #3d5e8c;
+  --sev-info-bg: #e3ebf5;
+
+  --f-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-doc: "Noto Serif KR", "AppleMyungjo", "Batang", serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12171a; --surface: #1a2125; --sunk: #222b30; --line: #2f3a40; --fg: #e3e9ec; --muted: #94a2aa;
+    --accent: #5cc4c4; --accent-soft: #173b3c;
+    --k-preamble: #5d6a72; --k-part: #c3cff5; --k-heading: #7f9cf0; --k-article: #3fbcbc; --k-appendix: #e07bb3; --k-annex: #d9b84a; --k-addendum: #b4c463;
+    --sev-error: #ff8a7a; --sev-error-bg: #3a1f1b; --sev-warning: #f0b955; --sev-warning-bg: #352a14; --sev-info: #93b4e6; --sev-info-bg: #1d2a3b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12171a; --surface: #1a2125; --sunk: #222b30; --line: #2f3a40; --fg: #e3e9ec; --muted: #94a2aa;
+  --accent: #5cc4c4; --accent-soft: #173b3c;
+  --k-preamble: #5d6a72; --k-part: #c3cff5; --k-heading: #7f9cf0; --k-article: #3fbcbc; --k-appendix: #e07bb3; --k-annex: #d9b84a; --k-addendum: #b4c463;
+  --sev-error: #ff8a7a; --sev-error-bg: #3a1f1b; --sev-warning: #f0b955; --sev-warning-bg: #352a14; --sev-info: #93b4e6; --sev-info-bg: #1d2a3b;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--f-ui); font-size: 14px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 64px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+h2 { font-size: 17px; font-weight: 600; }
+.eyebrow { font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.muted { color: var(--muted); }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* header */
+header { display: grid; gap: 14px; }
+.head-row { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+.head-row p { margin: 4px 0 0; max-width: 62ch; color: var(--muted); }
+.picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 5px 12px; cursor: pointer;
+  font-size: 13px; display: inline-flex; gap: 6px; align-items: center; max-width: 100%;
+}
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.chip .pg { font-family: var(--f-mono); font-size: 11.5px; opacity: .75; }
+
+/* pipeline */
+.pipeline { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.stage { padding: 14px 16px; display: grid; gap: 4px; align-content: start; position: relative; min-width: 0; }
+.stage + .stage { border-left: 1px solid var(--line); }
+.stage .step { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+.stage .name { font-weight: 600; }
+.stage .big { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stage .sub { font-size: 12.5px; color: var(--muted); }
+.stage.off { background: var(--sunk); }
+.stage.off .big { color: var(--muted); font-size: 15px; font-weight: 500; }
+.sevs { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 860px) {
+  .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stage + .stage { border-left: 0; }
+  .stage { border-top: 1px solid var(--line); }
+  .stage:nth-child(1), .stage:nth-child(2) { border-top: 0; }
+  .stage:nth-child(even) { border-left: 1px solid var(--line); }
+}
+
+.pill { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill.error { background: var(--sev-error-bg); color: var(--sev-error); }
+.pill.warning { background: var(--sev-warning-bg); color: var(--sev-warning); }
+.pill.info { background: var(--sev-info-bg); color: var(--sev-info); }
+
+/* finding banner */
+.finding { border: 1px solid var(--sev-warning); background: var(--sev-warning-bg); border-radius: 10px; padding: 14px 16px; display: grid; gap: 8px; }
+.finding h3 { font-size: 15px; color: var(--sev-warning); }
+.finding ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.finding .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.finding.ok { border-color: var(--k-article); background: var(--accent-soft); }
+.finding.ok h3 { color: var(--accent); }
+.compare { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; }
+.compare > div { padding: 12px 16px; display: grid; gap: 2px; min-width: 0; }
+.compare > div + div { border-left: 1px solid var(--line); }
+.compare .k { font-size: 12.5px; color: var(--muted); }
+.compare .v { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.compare .was { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.compare .now { font-size: 20px; font-weight: 600; }
+.compare .arrow { color: var(--muted); font-size: 12px; }
+.compare .better { color: var(--accent); }
+.compare .worse { color: var(--sev-warning); }
+@media (max-width: 700px) { .compare { grid-template-columns: repeat(2, minmax(0, 1fr)); } .compare > div:nth-child(3) { border-left: 0; } .compare > div:nth-child(n+3) { border-top: 1px solid var(--line); } }
+.tree .part { padding: 14px 14px 2px; font-size: 13px; font-weight: 700; color: var(--k-part); border-top: 1px solid var(--line); display: grid; gap: 1px; }
+.tree .part:first-child { border-top: 0; }
+.tree .part small { font-weight: 500; color: var(--muted); font-size: 11.5px; }
+.linkbtn { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font-weight: 500; }
+.finding .linkbtn { color: inherit; }
+
+/* coverage */
+section { display: grid; gap: 12px; min-width: 0; }
+.sec-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; justify-content: space-between; }
+.sec-head p { margin: 0; color: var(--muted); max-width: 70ch; }
+.cov { display: flex; height: 44px; border-radius: 6px; overflow: hidden; background: var(--sunk); cursor: pointer; }
+.cov div { height: 100%; min-width: 0; border-right: 1px solid var(--surface); transition: filter .12s; }
+.cov div:hover { filter: brightness(1.15) saturate(1.1); }
+.cov-axis { display: flex; justify-content: space-between; font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+.legend span { display: inline-flex; gap: 7px; align-items: center; font-size: 13px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.legend b { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+/* explorer */
+.explorer { display: grid; grid-template-columns: minmax(240px, 330px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .explorer { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.tree { max-height: 640px; overflow: auto; padding: 8px 0; }
+.tree .grp { padding: 10px 14px 4px; font-size: 12px; font-weight: 600; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.tree .grp i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.tree .node { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: baseline; width: 100%; text-align: left; background: none; border: 0; padding: 4px 14px 4px 26px; cursor: pointer; }
+.tree .node:hover { background: var(--sunk); }
+.tree .node[aria-current="true"] { background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+.tree .node .lb { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tree .node .tt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg); }
+.tree .node .ln { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.tree .node .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-left: 4px; vertical-align: middle; }
+.tree .node.app .lb { color: var(--k-appendix); }
+
+.detail { padding: 18px 20px; display: grid; gap: 14px; min-width: 0; }
+.detail-head { display: grid; gap: 6px; }
+.detail-head .crumbs { font-size: 12.5px; color: var(--muted); }
+.detail-head h3 { font-size: 20px; font-weight: 600; }
+.detail-head h3 .art { color: var(--k-article); margin-right: 8px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); }
+.meta b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+.tabs button { background: none; border: 0; padding: 8px 12px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; font-weight: 500; }
+.tabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--accent); }
+
+.doc { font-family: var(--f-doc); font-size: 15px; line-height: 1.85; display: grid; gap: 10px; max-width: 72ch; }
+.para { display: grid; grid-template-columns: 2em minmax(0, 1fr); gap: 4px; }
+.para .no { color: var(--k-article); font-weight: 600; }
+.items { display: grid; gap: 2px; margin-top: 4px; }
+.item { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+.item .mk { font-family: var(--f-ui); font-size: 12px; font-weight: 600; color: var(--muted); padding-top: 4px; white-space: nowrap; }
+.item .mk em { font-style: normal; font-weight: 500; opacity: .8; margin-right: 3px; font-size: 10.5px; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+.lvl-목 { margin-left: 1.4em; }
+.lvl-세목 { margin-left: 2.8em; }
+.empty { padding: 14px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); font-family: var(--f-ui); font-size: 13.5px; }
+
+.refs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ref { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 2px 8px; font-size: 12.5px; cursor: pointer; }
+.ref:hover { border-color: var(--accent); }
+.ref.broken { border-color: var(--sev-error); color: var(--sev-error); cursor: default; }
+
+.issue-list { display: grid; gap: 6px; }
+.issue-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: baseline; font-size: 13px; }
+
+/* source */
+.src { font-family: var(--f-mono); font-size: 12.5px; line-height: 1.6; max-height: 520px; overflow: auto; border-radius: 8px; background: var(--sunk); }
+.src table { border-collapse: collapse; width: 100%; }
+.src td { padding: 0 10px; vertical-align: top; white-space: pre-wrap; word-break: break-all; }
+.src td.n { color: var(--muted); text-align: right; user-select: none; width: 1%; white-space: nowrap; border-right: 3px solid transparent; }
+.src tr.start td { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.src .tag { font-family: var(--f-ui); font-size: 11px; font-weight: 600; border-radius: 4px; padding: 0 6px; margin-right: 8px; color: var(--surface); white-space: nowrap; }
+.src-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--muted); }
+.src-bar .nav { display: flex; gap: 6px; }
+.src-bar button { border: 1px solid var(--line); background: var(--surface); border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 12.5px; }
+
+/* arcs */
+.arcs { overflow-x: auto; padding: 12px; }
+.arcs svg { display: block; }
+.arcs text { font-family: var(--f-mono); font-size: 10px; fill: var(--muted); }
+
+/* checks */
+.checks { display: grid; gap: 0; }
+.check { border-top: 1px solid var(--line); }
+.check:first-child { border-top: 0; }
+.check summary { list-style: none; cursor: pointer; padding: 11px 16px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.check summary::-webkit-details-marker { display: none; }
+.check summary .cd { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+.check summary .nm { font-weight: 600; }
+.check .rows { padding: 0 16px 12px; display: grid; gap: 4px; }
+.check .rows button { text-align: left; background: none; border: 0; padding: 3px 0; cursor: pointer; display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: 10px; font-size: 13px; }
+.check .rows button:hover .msg { text-decoration: underline; }
+.check .rows .ln { font-family: var(--f-mono); font-size: 11.5px; color: var(--muted); }
+footer { font-size: 12.5px; color: var(--muted); max-width: 80ch; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="head-row">
+      <div>
+        <div class="eyebrow">withGot · terms 파이프라인 실행 결과</div>
+        <h1>약관 구조화 뷰어</h1>
+        <p>약관 PDF를 올렸을 때 <span class="mono">src/terms</span>가 원문을 약관·관·조·항·호로 나누고 검증하는 과정을 실제 실행 결과로 보여줍니다. 저장소의 약관 7개를 파서 수정 후 코드(<span class="mono">__COMMIT__</span>)로 미리 돌려 두었고, 수정 전 결과와 나란히 비교합니다.</p>
+      </div>
+    </div>
+    <div class="picker" id="picker" role="group" aria-label="약관 선택"></div>
+  </header>
+
+  <div class="pipeline" id="pipeline"></div>
+  <section>
+    <div class="sec-head">
+      <h2>파서 수정 전과 비교</h2>
+      <p>같은 원문 텍스트를 수정 전 파서(<span class="mono">16a4211</span>)와 수정 후 파서(<span class="mono">__COMMIT__</span>)로 각각 돌린 결과입니다.</p>
+    </div>
+    <div class="compare" id="compare"></div>
+  </section>
+  <div id="finding"></div>
+
+  <section>
+    <div class="sec-head">
+      <h2>원문이 어디로 분류됐나</h2>
+      <p>추출한 텍스트의 줄 전체를 한 줄로 펼쳤습니다. 각 구간은 그 줄을 차지한 구조 요소의 색입니다. 구간을 누르면 아래에 원문이 열립니다.</p>
+    </div>
+    <div class="cov" id="cov" role="img" aria-label="원문 줄별 구조 분류 지도"></div>
+    <div class="cov-axis" id="covAxis"></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>구조 트리와 조문</h2>
+      <p>주계약과 특약이 묶인 PDF는 약관별로 나뉩니다. 왼쪽에서 조를 고르면 파서가 나눈 항·호·목과 본문 속 조항 인용을 볼 수 있습니다.</p>
+    </div>
+    <div class="explorer">
+      <nav class="panel tree" id="tree" aria-label="구조 트리"></nav>
+      <div class="panel detail" id="detail"></div>
+    </div>
+  </section>
+
+  <section id="arcSec">
+    <div class="sec-head">
+      <h2>조항 인용 관계</h2>
+      <p>본문에서 다른 조를 인용한 경우를 호로 이었습니다. 세로 점선은 약관(주계약·특약) 경계이고, 빨간 표시는 찾지 못한 인용입니다.</p>
+    </div>
+    <div class="panel arcs" id="arcs"></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>구조 검증 결과</h2>
+      <p><span class="mono">validate_structure()</span>가 찾은 문제입니다. 항목을 누르면 해당 위치로 이동합니다.</p>
+    </div>
+    <div class="panel checks" id="checks"></div>
+  </section>
+
+  <footer id="footer"></footer>
+</div>
+
+<script>/*__DATA__*/</script>
+<script>
+(() => {
+  const DATA = window.TERMS_DATA || [];
+  const KIND = {
+    preamble: { name: "표지·안내·목차", color: "var(--k-preamble)" },
+    part: { name: "약관 제목", color: "var(--k-part)" },
+    heading: { name: "관 제목", color: "var(--k-heading)" },
+    article: { name: "조", color: "var(--k-article)" },
+    appendix: { name: "별표", color: "var(--k-appendix)" },
+    annex: { name: "부록 (인용 법령)", color: "var(--k-annex)" },
+    addendum: { name: "부칙", color: "var(--k-addendum)" },
+  };
+  const CODE = {
+    ARTICLE_DUPLICATE: "같은 조 번호가 여러 번 나옴",
+    ARTICLE_ORDER: "조 번호 순서가 거꾸로 감",
+    ARTICLE_NUMBER_GAP: "조 번호가 건너뜀",
+    EMPTY_ARTICLE: "본문 없는 조",
+    ITEM_NUMBER_GAP: "호 번호가 건너뜀",
+    PARAGRAPH_NUMBER_GAP: "항 번호가 건너뜀",
+    BROKEN_REFERENCE: "약관에 없는 조를 인용함",
+    NO_ADDENDUM: "부칙 없음",
+    NO_ARTICLES: "조를 찾지 못함",
+    HEADING_NUMBER_GAP: "관 번호가 건너뜀",
+    HEADING_DUPLICATE: "관 번호 중복",
+    ORPHAN_SUB_ARTICLE: "제N조 없이 제N조의M만 있음",
+    MISSING_TITLE: "제목 없는 조",
+    PART_WITHOUT_ARTICLES: "조를 찾지 못한 특약",
+  };
+  const partTitle = (d, p) => (p == null ? "약관 제목 줄 앞" : (d.parts[p] || {}).title || `약관 ${p + 1}`);
+  const SEV_ORDER = { error: 0, warning: 1, info: 2 };
+  const SEV_NAME = { error: "오류", warning: "경고", info: "참고" };
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const fmt = (n) => Number(n).toLocaleString("ko-KR");
+  const circled = (n) => (n >= 1 && n <= 20 ? String.fromCharCode(9311 + n) : n >= 21 && n <= 35 ? String.fromCharCode(12860 + n) : n >= 36 && n <= 50 ? String.fromCharCode(12941 + n) : `(${n})`);
+  const shortName = (n) => n.replace(/_약관.*$|_특약약관$/, "").replace(/^삼성생명_/, "").replace(/_/g, " ");
+
+  const rawCache = new Map();
+  async function rawLines(d) {
+    if (rawCache.has(d.name)) return rawCache.get(d.name);
+    const p = (async () => {
+      if (!("DecompressionStream" in window)) return null;
+      const bin = Uint8Array.from(atob(d.raw), (c) => c.charCodeAt(0));
+      const stream = new Blob([bin]).stream().pipeThrough(new DecompressionStream("gzip"));
+      const text = await new Response(stream).text();
+      return text.split("\n");
+    })().catch(() => null);
+    rawCache.set(d.name, p);
+    return p;
+  }
+
+  let cur = null;      // current doc
+  let sel = null;      // { kind, i }
+  let tab = "struct";
+  let srcLine = null;
+
+  function ownerAt(d, line) {
+    let lo = 0, hi = d.segs.length - 1, ans = d.segs[0];
+    while (lo <= hi) {
+      const m = (lo + hi) >> 1;
+      if (d.segs[m].s <= line) { ans = d.segs[m]; lo = m + 1; } else hi = m - 1;
+    }
+    return ans;
+  }
+  function stats(d) {
+    const by = {};
+    for (const s of d.segs) by[s.k] = (by[s.k] || 0) + (s.e - s.s + 1);
+    const lens = d.articles.map((a) => a.len).sort((a, b) => a - b);
+    const median = lens.length ? lens[Math.floor(lens.length / 2)] : 0;
+    let bigApp = null;
+    for (const s of d.segs) if (s.k === "appendix") { // 부록(annex)은 원래 원문 보관 대상이라 제외
+      const n = s.e - s.s + 1;
+      if (!bigApp || n > bigApp.n) bigApp = { n, seg: s, app: d.appendices[s.i] };
+    }
+    const sev = { error: 0, warning: 0, info: 0 };
+    for (const i of d.issues) sev[i.severity] = (sev[i.severity] || 0) + 1;
+    const refs = d.articles.reduce((t, a) => t + a.refs.length, 0);
+    return { by, median, bigApp, sev, refs };
+  }
+
+  /* ---------- picker ---------- */
+  function renderPicker() {
+    $("picker").innerHTML = DATA.map((d, i) => `<button class="chip" id="pick-${i}" aria-pressed="${d === cur}" data-i="${i}">${esc(shortName(d.name))}<span class="pg">${d.pages}쪽</span></button>`).join("");
+    $("picker").querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => select(DATA[+b.dataset.i])));
+  }
+
+  /* ---------- pipeline ---------- */
+  function renderPipeline(d, st) {
+    const sevPills = ["error", "warning", "info"].filter((k) => st.sev[k]).map((k) => `<span class="pill ${k}">${SEV_NAME[k]} ${st.sev[k]}</span>`).join("") || `<span class="pill info">문제 없음</span>`;
+    $("pipeline").innerHTML = `
+      <div class="stage"><span class="step">1 · 업로드</span><span class="name">약관 PDF</span><span class="big">${d.pages}쪽</span><span class="sub">${esc(shortName(d.name))}</span></div>
+      <div class="stage"><span class="step">2 · terms/extract.py</span><span class="name">텍스트 추출</span><span class="big">${fmt(d.nlines)}줄</span><span class="sub">${fmt(d.chars)}자 · pypdf ${d.t.extract}초</span></div>
+      <div class="stage"><span class="step">3 · terms/parser.py</span><span class="name">구조화</span><span class="big">조 ${d.articles.length}개</span><span class="sub">약관 ${d.parts.length} · 관 ${d.headings.length} · 별표 ${d.appendices.filter((x) => !x.annex).length} · 부록 ${d.appendices.filter((x) => x.annex).length} · 인용 ${st.refs} · ${Math.max(1, Math.round(d.t.parse * 1000))}ms</span></div>
+      <div class="stage"><span class="step">4 · terms/validator.py</span><span class="name">구조 검증</span><span class="big">${d.issues.length}건</span><div class="sevs">${sevPills}</div></div>
+      <div class="stage off"><span class="step">5 · terms/analyzer.py</span><span class="name">AI 분석</span><span class="big">이번 실행에서 제외</span><span class="sub">LLM API 키가 필요해 구조화와 검증까지만 실행</span></div>`;
+  }
+
+  /* ---------- finding banner ---------- */
+  function renderCompare(d, st) {
+    const b = d.before;
+    const now = {
+      articles: d.articles.length,
+      artShare: (st.by.article || 0) / d.nlines,
+      errors: st.sev.error || 0,
+      warnings: st.sev.warning || 0,
+    };
+    const cell = (k, was, cur, fmtv, higherBetter) => {
+      const cls = cur === was ? "" : (cur > was) === higherBetter ? "better" : "worse";
+      return `<div><span class="k">${k}</span><span class="v"><span class="was">${fmtv(was)}</span><span class="arrow">→</span><span class="now ${cls}">${fmtv(cur)}</span></span></div>`;
+    };
+    const pct = (v) => `${Math.round(v * 100)}%`;
+    $("compare").innerHTML =
+      cell("찾은 조", b.articles, now.articles, fmt, true) +
+      cell("조로 분류된 원문", b.artShare, now.artShare, pct, true) +
+      cell("검증 오류", b.errors, now.errors, fmt, false) +
+      cell("검증 경고", b.warnings, now.warnings, fmt, false);
+  }
+
+  function renderFinding(d, st) {
+    const total = d.nlines;
+    const artPct = Math.round(((st.by.article || 0) / total) * 100);
+    const notes = [];
+    const noArt = d.issues.filter((i) => i.code === "PART_WITHOUT_ARTICLES");
+    if (noArt.length) {
+      notes.push(`특약 ${noArt.length}개는 <b>지원하지 않는 조 표기</b>를 써서 조를 찾지 못했습니다. ${noArt.map((i) => `<button class="linkbtn" data-jump="${i.line}">${esc(i.article.replace(/\s*약관$/, ""))}</button>`).join(" · ")}`);
+    }
+    if (st.bigApp && st.bigApp.n / total > 0.3) {
+      notes.push(`원문의 <b>${Math.round((st.bigApp.n / total) * 100)}%</b>(${fmt(st.bigApp.seg.s)}~${fmt(st.bigApp.seg.e)}번째 줄)가 별표 하나 <b>“${esc(st.bigApp.app.label)}”</b> 안으로 들어갔습니다. 이 구간에 있는 실제 조문은 조로 인식되지 않았습니다. <button class="linkbtn" data-jump="${st.bigApp.seg.s}">이 줄부터 원문 보기</button>`);
+    }
+    if (d.articles.length >= 10 && st.median <= 20) {
+      const firstArt = d.articles.find((a) => a.path.length) || d.articles[0];
+      notes.push(`인식된 조 ${d.articles.length}개 중 절반 이상의 본문이 ${st.median}자 이하입니다. 조 제목 뒤에 쪽 번호만 붙은 <b>목차 줄</b>을 조로 읽은 것으로 보입니다. <button class="linkbtn" data-jump="${firstArt.line}">${fmt(firstArt.line)}번째 줄 보기</button>`);
+    }
+    const dup = d.issues.filter((i) => i.code === "ARTICLE_DUPLICATE");
+    const by = st.by;
+    const rest = [];
+    if (by.annex) rest.push(`부록(인용 법령) ${Math.round((by.annex / total) * 100)}%`);
+    if (by.appendix) rest.push(`별표 ${Math.round((by.appendix / total) * 100)}%`);
+    if (by.preamble) rest.push(`표지·안내·목차 ${Math.round((by.preamble / total) * 100)}%`);
+    const okBody = `<div>약관 ${d.parts.length || 1}개에서 조 ${d.articles.length}개, 조항 인용 ${st.refs}건을 찾았습니다.${rest.length ? ` 나머지 원문은 ${rest.join(", ")}입니다.` : ""}${dup.length ? ` 조 번호 중복 ${dup.length}건은 약관 원문에서 서로 다른 조에 같은 번호가 붙은 경우입니다 (${dup.map((i) => esc(i.article)).join(", ")}).` : ""}</div>`;
+    if (notes.length) {
+      $("finding").innerHTML = `<div class="finding" role="note"><h3>일부는 아직 구조화되지 않았습니다 · 조 구간이 원문의 ${artPct}%</h3>${okBody}<ul>${notes.map((n) => `<li>${n}</li>`).join("")}</ul></div>`;
+    } else {
+      $("finding").innerHTML = `<div class="finding ok" role="note"><h3>본문이 약관별·조 단위로 구조화됐습니다 · 조 구간이 원문의 ${artPct}%</h3>${okBody}</div>`;
+    }
+    $("finding").querySelectorAll("[data-jump]").forEach((b) => b.addEventListener("click", () => openSource(+b.dataset.jump, true)));
+    $("finding").querySelectorAll("[data-pick]").forEach((b) => b.addEventListener("click", () => select(DATA[+b.dataset.pick])));
+  }
+
+  /* ---------- coverage ---------- */
+  function renderCoverage(d, st) {
+    const total = d.nlines;
+    $("cov").innerHTML = d.segs.map((s, idx) => {
+      const n = s.e - s.s + 1;
+      const label = s.k === "article" ? `${d.articles[s.i].label} ${d.articles[s.i].title || ""}` : s.k === "appendix" || s.k === "annex" ? d.appendices[s.i].label : s.k === "heading" ? d.headings[s.i].label : s.k === "part" ? d.parts[s.i].title : "표지·안내·목차";
+      return `<div data-seg="${idx}" style="flex:${n} 0 0;background:${KIND[s.k].color}" title="${esc(KIND[s.k].name)} · ${esc(label)} · ${fmt(s.s)}~${fmt(s.e)}줄 (${fmt(n)}줄)"></div>`;
+    }).join("");
+    $("cov").onclick = (e) => {
+      const t = e.target.closest("[data-seg]"); if (!t) return;
+      const s = d.segs[+t.dataset.seg];
+      if (s.k === "article") selectItem({ kind: "article", i: s.i }, "source");
+      else if (s.k === "appendix" || s.k === "annex") selectItem({ kind: "appendix", i: s.i }, "source");
+      else openSource(s.s, true);
+    };
+    const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => `<span>${fmt(Math.max(1, Math.round(total * f)))}</span>`).join("");
+    $("covAxis").innerHTML = ticks;
+    $("legend").innerHTML = Object.entries(KIND).filter(([k]) => st.by[k]).map(([k, v]) => `<span><i style="background:${v.color}"></i>${v.name} <b>${Math.round((st.by[k] / total) * 1000) / 10}%</b><span class="muted mono">${fmt(st.by[k])}줄</span></span>`).join("");
+  }
+
+  /* ---------- tree ---------- */
+  function renderTree(d) {
+    const issueLines = new Set(d.issues.filter((i) => i.severity !== "info").map((i) => i.line));
+    let html = "", lastKey = null, lastPart;
+    const partCount = (p) => d.articles.filter((a) => a.part === p).length;
+    d.articles.forEach((a, i) => {
+      if (d.parts.length && a.part !== lastPart) {
+        html += `<div class="part">${esc(partTitle(d, a.part))}<small>조 ${partCount(a.part)}개${a.part != null ? ` · ${fmt(d.parts[a.part].line)}번째 줄부터` : ""}</small></div>`;
+        lastPart = a.part; lastKey = null;
+      }
+      const key = (a.addendum ? `부칙 ${a.addendum}` : a.path.join(" › ") || "관 없이 시작한 조") + (a.section ? ` · 《${a.section}》` : "");
+      if (key !== lastKey) { html += `<div class="grp"><i style="background:${a.path.length ? "var(--k-heading)" : "var(--k-preamble)"}"></i>${esc(key)}</div>`; lastKey = key; }
+      html += `<button class="node" data-k="article" data-i="${i}" id="node-a-${i}"><span class="lb">${esc(a.label)}</span><span class="tt">${esc(a.title || (a.deleted ? "삭제" : ""))}${issueLines.has(a.line) ? `<span class="dot" style="background:var(--sev-warning)" title="검증 경고"></span>` : ""}</span><span class="ln">${fmt(a.line)}</span></button>`;
+    });
+    if (d.appendices.length) {
+      html += `<div class="part">별표·부록<small>구조화하지 않고 원문 그대로 보관</small></div>`;
+      d.appendices.forEach((x, i) => {
+        const kind = x.annex ? "부록" : "별표";
+        html += `<button class="node app" data-k="appendix" data-i="${i}" id="node-p-${i}"><span class="lb" style="color:${x.annex ? "var(--k-annex)" : "var(--k-appendix)"}">${kind}</span><span class="tt">${esc(x.label.replace(/^(별표|부록)\s*/, ""))}</span><span class="ln">${fmt(x.len)}자</span></button>`;
+      });
+    }
+    $("tree").innerHTML = html || `<div class="empty" style="margin:12px">조를 찾지 못했습니다.</div>`;
+    $("tree").onclick = (e) => {
+      const b = e.target.closest(".node"); if (!b) return;
+      selectItem({ kind: b.dataset.k, i: +b.dataset.i }, tab);
+    };
+  }
+  function markTree() {
+    $("tree").querySelectorAll(".node").forEach((n) => n.setAttribute("aria-current", String(sel && n.dataset.k === sel.kind && +n.dataset.i === sel.i)));
+    const id = sel ? (sel.kind === "article" ? `node-a-${sel.i}` : `node-p-${sel.i}`) : null;
+    const el = id && $(id);
+    if (el) {
+      const t = $("tree"), top = el.offsetTop, h = el.offsetHeight;
+      if (top < t.scrollTop || top + h > t.scrollTop + t.clientHeight) t.scrollTop = top - t.clientHeight / 3;
+    }
+  }
+
+  /* ---------- detail ---------- */
+  function itemsHtml(list) {
+    return list.map((it) => `<div class="item lvl-${it.lv}"><span class="mk"><em>${it.lv}</em>${esc(it.lb)}</span><div>${esc(it.t)}${it.c.length ? `<div class="items">${itemsHtml(it.c)}</div>` : ""}</div></div>`).join("");
+  }
+  function findArticle(d, label, fromIdx) {
+    // 같은 약관(part)의 조를 먼저, 없으면 다른 약관에서 (검증 규칙과 같은 순서)
+    const part = d.articles[fromIdx].part;
+    let best = -1, bestScore = Infinity;
+    d.articles.forEach((a, i) => {
+      if (a.label !== label) return;
+      const score = (a.part === part ? 0 : 1e6) + Math.abs(i - fromIdx);
+      if (score < bestScore) { best = i; bestScore = score; }
+    });
+    return best;
+  }
+  function renderDetail() {
+    const d = cur;
+    if (!sel) { $("detail").innerHTML = `<div class="empty">왼쪽 트리에서 조를 고르세요.</div>`; return; }
+    let head = "", body = "";
+    let startLine, seg;
+    if (sel.kind === "article") {
+      const a = d.articles[sel.i];
+      startLine = a.line;
+      const crumbs = [...(d.parts.length ? [partTitle(d, a.part)] : []), ...(a.addendum ? [`부칙 ${a.addendum}`] : a.path.length ? a.path : ["관 없음"]), ...(a.section ? [`《${a.section}》`] : [])];
+      const mine = d.issues.filter((x) => x.line === a.line);
+      head = `<div class="detail-head"><div class="crumbs">${crumbs.map(esc).join(" › ")}</div><h3><span class="art">${esc(a.label)}</span>${esc(a.title || (a.deleted ? "삭제" : "(제목 없음)"))}</h3>
+        <div class="meta"><span>원문 <b>${fmt(a.line)}</b>번째 줄</span><span>본문 <b>${fmt(a.len)}</b>자</span><span>항 <b>${a.paras.filter((p) => p.n != null).length || (a.paras.length ? "표시 없음" : 0)}</b></span><span>인용 <b>${a.refs.length}</b></span>${a.deleted ? `<span class="pill warning">삭제된 조</span>` : ""}</div></div>
+        ${mine.length ? `<div class="issue-list">${mine.map((x) => `<div class="issue-row"><span class="pill ${x.severity}">${SEV_NAME[x.severity]}</span><span>${esc(x.message)}</span><span class="mono muted" style="font-size:11px">${esc(x.code)}</span></div>`).join("")}</div>` : ""}`;
+      if (tab === "struct") {
+        const paras = a.paras.filter((p) => p.t || p.items.length);
+        body = paras.length
+          ? `<div class="doc">${paras.map((p) => `<div class="para"><span class="no">${p.n != null ? circled(p.n) : ""}</span><div>${esc(p.t)}${p.items.length ? `<div class="items">${itemsHtml(p.items)}</div>` : ""}</div></div>`).join("")}</div>`
+          : `<div class="empty">파서가 이 조에서 본문을 찾지 못했습니다. ‘원문’ 탭에서 이 줄 주변을 확인해 보세요.</div>`;
+        if (a.refs.length) {
+          body += `<div class="refs"><span class="eyebrow" style="margin-right:4px">본문 속 인용</span>${a.refs.map((r) => {
+            const t = findArticle(d, r.target, sel.i);
+            return t >= 0 ? `<button class="ref" data-goto="${t}" title="${esc(d.articles[t].title || "")}">${esc(r.text)} → ${esc(r.target)}</button>` : `<span class="ref broken" title="이 약관에서 찾지 못한 조">${esc(r.text)} ✕</span>`;
+          }).join("")}</div>`;
+        }
+      }
+    } else {
+      const x = d.appendices[sel.i];
+      startLine = x.line;
+      seg = d.segs.find((s) => (s.k === "appendix" || s.k === "annex") && s.i === sel.i);
+      const n = seg ? seg.e - seg.s + 1 : 0;
+      const kind = x.annex ? "부록" : "별표";
+      head = `<div class="detail-head"><div class="crumbs">${kind}</div><h3><span class="art" style="color:${x.annex ? "var(--k-annex)" : "var(--k-appendix)"}">${kind}</span>${esc(x.label.replace(/^(별표|부록)\s*/, ""))}</h3>
+        <div class="meta"><span>원문 <b>${fmt(x.line)}</b>번째 줄부터</span><span><b>${fmt(n)}</b>줄</span><span><b>${fmt(x.len)}</b>자</span></div></div>`;
+      if (tab === "struct") body = x.annex
+        ? `<div class="empty">부록에는 약관이 인용한 법령 조문이 들어 있습니다. 법령의 ‘제2조(정의)’ 같은 조문을 약관 조로 잘못 읽지 않도록 구조화하지 않고 원문 그대로 보관합니다. ‘원문’ 탭에서 내용을 확인하세요.</div>`
+        : `<div class="empty">별표는 구조화 규칙상 내용을 나누지 않고 원문 그대로 보관합니다. ${n > d.nlines * 0.3 ? `<b>이 별표는 원문의 ${Math.round((n / d.nlines) * 100)}%를 차지해서, 실제 조문이 이 안에 들어가 있을 가능성이 큽니다.</b> ` : ""}‘원문’ 탭에서 내용을 확인하세요.</div>`;
+    }
+    const tabs = `<div class="tabs" role="tablist"><button role="tab" id="tab-struct" aria-selected="${tab === "struct"}" data-tab="struct">구조</button><button role="tab" id="tab-source" aria-selected="${tab === "source"}" data-tab="source">원문</button></div>`;
+    if (tab === "source") body = `<div id="srcHost"></div>`;
+    $("detail").innerHTML = head + tabs + body;
+    $("detail").querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; renderDetail(); }));
+    $("detail").querySelectorAll("[data-goto]").forEach((b) => b.addEventListener("click", () => selectItem({ kind: "article", i: +b.dataset.goto }, "struct")));
+    if (tab === "source") renderSource($("srcHost"), srcLine ?? startLine, startLine);
+  }
+
+  async function renderSource(host, line, mark) {
+    const d = cur;
+    host.innerHTML = `<div class="empty">원문을 불러오는 중…</div>`;
+    const L = await rawLines(d);
+    if (d !== cur || !host.isConnected) return;
+    if (!L) { host.innerHTML = `<div class="empty">이 브라우저에서는 원문 압축을 풀 수 없습니다.</div>`; return; }
+    const from = Math.max(1, line - 6), to = Math.min(L.length, from + 160);
+    const starts = new Map();
+    for (const s of d.segs) if (s.s >= from && s.s <= to) starts.set(s.s, s);
+    let rows = "";
+    for (let n = from; n <= to; n++) {
+      const o = ownerAt(d, n), st = starts.get(n);
+      const lbl = st ? (st.k === "article" ? d.articles[st.i].label : st.k === "appendix" ? "별표" : st.k === "annex" ? "부록" : st.k === "heading" ? "관" : st.k === "part" ? "약관" : "표지") : "";
+      rows += `<tr class="${n === mark ? "start" : ""}"><td class="n" style="border-right-color:${KIND[o.k].color}">${n}</td><td>${st ? `<span class="tag" style="background:${KIND[st.k].color}">${esc(lbl)}</span>` : ""}${esc(L[n - 1])}</td></tr>`;
+    }
+    const o = ownerAt(d, line);
+    host.innerHTML = `<div style="display:grid;gap:8px"><div class="src-bar"><span>${fmt(from)}~${fmt(to)}번째 줄 · 왼쪽 색 띠는 그 줄을 차지한 구조 요소 · 이 위치는 <b style="color:${KIND[o.k].color}">${KIND[o.k].name}</b></span><span class="nav"><button id="srcUp">▲ 위로</button><button id="srcDown">아래로 ▼</button></span></div><div class="src"><table>${rows}</table></div></div>`;
+    $("srcUp").onclick = () => { srcLine = Math.max(1, from - 150); renderSource(host, srcLine, mark); };
+    $("srcDown").onclick = () => { if (to < L.length) { srcLine = to - 4; renderSource(host, srcLine, mark); } };
+  }
+
+  function selectItem(s, t) {
+    sel = s; tab = t || "struct"; srcLine = null;
+    markTree(); renderDetail();
+  }
+  function openSource(line, scroll) {
+    const o = ownerAt(cur, line);
+    if (o.k === "article") sel = { kind: "article", i: o.i };
+    else if (o.k === "appendix" || o.k === "annex") sel = { kind: "appendix", i: o.i };
+    else if (!sel) sel = cur.articles.length ? { kind: "article", i: 0 } : null;
+    tab = "source"; srcLine = line;
+    markTree(); renderDetail();
+    if (scroll) $("detail").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+  }
+
+  /* ---------- arcs ---------- */
+  function renderArcs(d) {
+    const edges = [];
+    d.articles.forEach((a, i) => a.refs.forEach((r) => {
+      const t = findArticle(d, r.target, i);
+      edges.push({ from: i, to: t, text: r.text, target: r.target });
+    }));
+    if (!edges.length) { $("arcSec").hidden = false; $("arcs").innerHTML = `<div class="empty">본문에서 다른 조를 인용한 곳을 찾지 못했습니다.</div>`; return; }
+    $("arcSec").hidden = false;
+    const n = d.articles.length, step = Math.max(14, Math.min(28, 1100 / n)), padX = 20;
+    const W = padX * 2 + step * (n - 1);
+    const maxSpan = Math.max(1, ...edges.filter((e) => e.to >= 0).map((e) => Math.abs(e.to - e.from)));
+    const H = Math.min(220, 30 + (maxSpan * step) / 2), base = H - 4;
+    const x = (i) => padX + i * step;
+    let g = `<line x1="${padX}" x2="${W - padX}" y1="${base}" y2="${base}" stroke="var(--line)" stroke-width="1"/>`;
+    d.articles.forEach((a, i) => {
+      if (i > 0 && a.part !== d.articles[i - 1].part) g += `<line x1="${x(i) - step / 2}" x2="${x(i) - step / 2}" y1="6" y2="${base + 4}" stroke="var(--k-part)" stroke-opacity=".45" stroke-dasharray="3 3"><title>${esc(partTitle(d, a.part))}</title></line>`;
+    });
+    for (const e of edges) {
+      if (e.to < 0) { g += `<line x1="${x(e.from)}" x2="${x(e.from)}" y1="${base}" y2="${base - 14}" stroke="var(--sev-error)" stroke-width="2"><title>${esc(d.articles[e.from].label)} → ${esc(e.text)} (찾지 못함)</title></line>`; continue; }
+      if (e.to === e.from) continue;
+      const x1 = x(Math.min(e.from, e.to)), x2 = x(Math.max(e.from, e.to)), r = (x2 - x1) / 2;
+      const ry = Math.min(r, base - 8);
+      g += `<path d="M${x1},${base} A${r},${ry} 0 0 1 ${x2},${base}" fill="none" stroke="var(--k-article)" stroke-opacity=".55" stroke-width="1.4"><title>${esc(d.articles[e.from].label)} → ${esc(e.text)}</title></path>`;
+    }
+    const cited = new Set(edges.filter((e) => e.to >= 0).map((e) => e.to));
+    const citing = new Set(edges.map((e) => e.from));
+    d.articles.forEach((a, i) => {
+      const c = cited.has(i) || citing.has(i);
+      g += `<circle cx="${x(i)}" cy="${base}" r="${c ? 3.5 : 2}" fill="${c ? "var(--k-article)" : "var(--line)"}" style="cursor:pointer" data-a="${i}"><title>${esc(a.label)} ${esc(a.title || "")}</title></circle>`;
+    });
+    const every = Math.ceil(26 / step);
+    let labels = "";
+    d.articles.forEach((a, i) => { if (i % every === 0) labels += `<text x="${x(i)}" y="${base + 14}" text-anchor="middle">${esc(a.label.replace(/^부칙 /, "부"))}</text>`; });
+    $("arcs").innerHTML = `<svg width="${W}" height="${H + 20}" viewBox="0 0 ${W} ${H + 20}" role="img" aria-label="조항 인용 관계">${g}${labels}</svg><div class="muted" style="font-size:12.5px;margin-top:6px">인용 ${edges.length}건 · 찾은 대상 ${edges.filter((e) => e.to >= 0).length}건 · 못 찾은 대상 ${edges.filter((e) => e.to < 0).length}건. 점을 누르면 그 조로 이동합니다.</div>`;
+    $("arcs").querySelectorAll("[data-a]").forEach((c) => c.addEventListener("click", () => { selectItem({ kind: "article", i: +c.dataset.a }, "struct"); $("detail").scrollIntoView({ block: "start", behavior: "smooth" }); }));
+  }
+
+  /* ---------- checks ---------- */
+  function renderChecks(d) {
+    const groups = new Map();
+    for (const i of d.issues) {
+      if (!groups.has(i.code)) groups.set(i.code, []);
+      groups.get(i.code).push(i);
+    }
+    const list = [...groups.entries()].sort((a, b) => SEV_ORDER[a[1][0].severity] - SEV_ORDER[b[1][0].severity] || b[1].length - a[1].length);
+    if (!list.length) { $("checks").innerHTML = `<div class="empty" style="margin:12px">검증에서 찾은 문제가 없습니다.</div>`; return; }
+    $("checks").innerHTML = list.map(([code, arr], gi) => `<details class="check" id="chk-${gi}" ${gi === 0 ? "open" : ""}><summary><span class="pill ${arr[0].severity}">${SEV_NAME[arr[0].severity]} ${arr.length}</span><span class="nm">${esc(CODE[code] || code)}</span><span class="cd">${esc(code)}</span></summary><div class="rows">${arr.slice(0, 60).map((x) => `<button data-line="${x.line ?? ""}"><span class="ln">${x.line != null ? fmt(x.line) + "줄" : "—"}</span><span class="msg">${esc(x.message)}</span></button>`).join("")}${arr.length > 60 ? `<span class="muted">외 ${arr.length - 60}건</span>` : ""}</div></details>`).join("");
+    $("checks").querySelectorAll("[data-line]").forEach((b) => b.addEventListener("click", () => { if (b.dataset.line) openSource(+b.dataset.line, true); }));
+  }
+
+  function select(d) {
+    cur = d; sel = null; tab = "struct"; srcLine = null;
+    const st = stats(d);
+    renderPicker(); renderPipeline(d, st); renderCompare(d, st); renderFinding(d, st); renderCoverage(d, st); renderTree(d); renderArcs(d); renderChecks(d);
+    const firstReal = d.articles.findIndex((a) => a.len > 40);
+    if (d.articles.length) selectItem({ kind: "article", i: firstReal >= 0 ? firstReal : 0 }, "struct");
+    else renderDetail();
+    $("footer").innerHTML = `원문 제목: “${esc(d.title || "—")}”. __DATE__에 저장소 main(<span class="mono">__COMMIT__</span>, 파서 수정 전부 반영)의 <span class="mono">parse_terms()</span>와 <span class="mono">validate_structure()</span>를 그대로 실행한 결과이고, 비교 수치는 수정 전 커밋 <span class="mono">16a4211</span>로 같은 텍스트를 돌린 값입니다. 원문 분류 비율은 각 구조 요소가 시작한 줄부터 다음 요소 직전까지를 그 요소의 줄로 셉니다. 텍스트 추출은 앱과 같은 pypdf를 썼습니다. AI 분석 단계는 실행하지 않았습니다.`;
+    rawLines(d);
+  }
+
+  if (!DATA.length) { document.querySelector(".wrap").insertAdjacentHTML("beforeend", `<div class="empty">데이터를 불러오지 못했습니다.</div>`); return; }
+  select(DATA.find((d) => d.name.includes("급여실손의료비보장보험_2605")) || DATA[0]);
+})();
+</script>
