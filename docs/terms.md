@@ -1,0 +1,128 @@
+# 약관 분석 / 구조화 / 검증
+
+약관 원문을 **조·항·호·목 구조로 나누고(구조화)**, 구조가 올바른지 **검증**한 뒤,
+LLM 으로 조항별 **분석**(분류·요약·불공정 조항 검토)을 하고, 그 분석이 원문에 근거하는지 다시 **검증**합니다.
+
+```
+원문(PDF/TXT/붙여넣기)
+   │ terms/extract.py     텍스트 추출 (pypdf)
+   ▼
+[구조화]   terms/parser.py      규칙 기반. LLM 사용 안 함
+   ▼
+[구조 검증] terms/validator.py   번호 누락·중복, 끊어진 조항 인용 …
+   ▼
+[AI 분석]  terms/analyzer.py    조별 분류·요약·위험도·불공정 유형 + 전체 개요 (LLM)
+   ▼
+[분석 검증] terms/validator.py   없는 조, 원문에 없는 인용구 등 hallucination 검출
+   ▼
+TermsReport (schema/terms.py)
+```
+
+구조화와 두 검증은 규칙 기반이라 **API 키 없이 동작하고 결과가 매번 같습니다.**
+LLM 은 판단이 필요한 분석에만 씁니다. AI 분석이 실패해도 구조화·구조 검증 결과는 그대로 돌려줍니다.
+
+## 사용하기
+
+### 앱에서
+
+**약관 분석** 화면에서 텍스트를 붙여넣거나, PDF/TXT 를 올리거나, 문서 보관함의 PDF 를 고릅니다.
+사이드바의 **AI 분석 실행**을 끄면 구조화와 구조 검증만 합니다.
+결과 탭: 구조(조별 본문) · 검증(문제 목록) · AI 분석(위험도별 조항) · JSON(다운로드).
+
+### 코드에서
+
+```python
+from terms import parse_terms, validate_structure, run_terms_pipeline
+
+doc = parse_terms(text)                 # TermsDocument
+for a in doc.articles:
+    print(a.label, a.title, a.path)     # 제3조의2 개인정보 보호 ['제2장 이용계약']
+print(doc.find("제5조").full_text())
+
+for issue in validate_structure(doc):
+    print(issue.severity, issue.code, issue.message)
+
+report = run_terms_pipeline(text, provider="anthropic")   # 또는 doc_id=3 (보관함 PDF)
+report.analysis.clauses        # 조별 분석
+report.issues                  # 구조 검증 + 분석 검증
+report.analysis_error          # AI 분석 실패 사유 (성공하면 None)
+report.trace_id                # Trace 화면에서 단계별 확인
+```
+
+### Agent 에서
+
+`get_terms_outline(doc_id)`(목차 + 구조 검증), `get_terms_article(doc_id, article)`(조 본문) 도구가 등록되어 있어서,
+Agent 화면에서 "3번 문서 약관에서 해지 관련 조항 찾아줘" 처럼 물으면 조 단위로 찾아 읽습니다.
+
+## 구조화 규칙
+
+| 단위 | 인식하는 표기 |
+|---|---|
+| 편·장·절·관 | `제1장 총칙` (번호 뒤 공백 + 40자 이하 제목) |
+| 조 | `제1조(목적)`, `제1조 [목적]`, `제3조의2(…)`, `제5조 삭제`, `제1조 목적` |
+| 항 | `①` ~ `㊿` |
+| 호 / 목 / 세목 | `1.` / `가.` / `1)`, `(1)` |
+| 부칙 | `부칙`, `부 칙`, `부칙 <2024.1.1.>` — 이후의 조는 부칙 조 (`부칙 제1조`) |
+| 별표 / 별지 | `[별표 1] 제목`, `별표 2 제목`, `【별지 1】` — 내용은 구조화하지 않고 그대로 보관 |
+
+- 줄 맨 앞에서만 표기를 인식하고, 표기 없는 줄은 앞 요소의 본문이 이어지는 것으로 봅니다.
+- `제3조에 따라 …` 처럼 줄 맨 앞의 **인용**은 조 시작으로 보지 않습니다 (조 번호 바로 뒤가 조사이거나, 25자 넘는 문장이면 인용).
+- 페이지 번호 줄(`- 3 -`, `3 / 20`)은 버립니다.
+- 본문 속 조항 인용(`제5조제2항제3호`, `제3조의2`, 같은 조의 `제2항`)을 뽑아 `Article.references` 에 둡니다.
+  `「상법」 제638조`, `같은 법 제5조` 처럼 앞에 법령 이름이 오면 다른 법 조문이라 제외합니다.
+
+## 검증 항목
+
+### 구조 검증 (`source="structure"`)
+
+| 코드 | 수준 | 내용 |
+|---|---|---|
+| `NO_ARTICLES` | error | 조를 하나도 못 찾음 (약관이 아니거나 스캔본) |
+| `ARTICLE_DUPLICATE` | error | 같은 번호의 조가 여러 번 나옴 |
+| `BROKEN_REFERENCE` | error | 인용한 조·항·호가 없음 |
+| `ARTICLE_NUMBER_GAP` | warning | 조 번호가 건너뜀 (`삭제`된 조는 있는 것으로 봄) |
+| `ARTICLE_ORDER` | warning | 앞 조보다 번호가 작음 |
+| `ORPHAN_SUB_ARTICLE` | warning | `제N조의M` 은 있는데 `제N조` 가 없음 |
+| `REFERENCE_TO_DELETED` | warning | 삭제된 조를 인용 |
+| `PARAGRAPH_NUMBER_GAP` / `MIXED_PARAGRAPHS` | warning | 항 번호가 순서대로가 아님 / 번호 있는 항과 없는 항이 섞임 |
+| `ITEM_NUMBER_GAP` | warning | 호(1.2.3.)·목(가.나.다.)·세목 번호가 순서대로가 아님 |
+| `HEADING_NUMBER_GAP` / `HEADING_DUPLICATE` | warning | 장·절 등 번호가 이어지지 않음 / 중복 |
+| `EMPTY_ARTICLE` | warning | 본문 없는 조 |
+| `MISSING_TITLE` | info | 제목 없는 조 (부칙 제외) |
+| `NO_ADDENDUM` | info | 부칙이 없음 |
+
+부칙의 조 번호는 부칙마다 따로 검사합니다. 부칙 안의 인용은 같은 부칙의 조를 먼저 찾고, 없으면 본문에서 찾습니다.
+
+### 분석 검증 (`source="analysis"`)
+
+AI 분석이 **원문에 근거하는지** 확인합니다.
+
+| 코드 | 수준 | 내용 |
+|---|---|---|
+| `UNKNOWN_ARTICLE` | error | 원문에 없는 조를 분석함 |
+| `QUOTE_NOT_FOUND` | error | 인용구(quote)가 해당 조 본문에 없음. 다른 조에 있으면 어디인지 알려줌 |
+| `MISSING_QUOTE` | warning | 문제를 지적했는데 원문 인용이 없음 |
+| `RISK_WITHOUT_ISSUE` / `ISSUE_WITHOUT_RISK` | warning | 위험도와 지적 내용이 맞지 않음 |
+| `DUPLICATE_ANALYSIS` | warning | 같은 조를 여러 번 분석 |
+| `UNKNOWN_CATEGORY` / `UNKNOWN_ISSUE_TYPE` | info | 정해진 분류·유형 밖의 값 |
+| `NOT_ANALYZED` | info | 분석되지 않은 조 |
+
+인용구 비교는 공백·줄바꿈·따옴표 차이를 무시합니다 (PDF 줄바꿈 때문).
+
+## AI 분석
+
+- 원문 대신 구조화 결과를 `### 제12조 (제목)  [제2장 …]` 형식으로 보내서, 모델이 조를 정확한 표기로 가리키게 합니다.
+- 조별 결과: `category`(분류), `summary`, `risk`(none/low/medium/high), `issues[]`(불공정 유형, 설명, 원문 인용, 근거 조문).
+- 불공정 유형은 약관규제법 제5조~제14조 기준입니다 (`schema/terms.py` 의 `UNFAIR_TYPES`).
+- 긴 약관은 조 단위로 `chunk_chars`(기본 30,000자)씩 나눠 분석한 뒤, 조별 요약으로 전체 개요를 한 번 더 만듭니다.
+- 응답은 JSON 으로 받아 Pydantic 으로 검사합니다. 형식이 틀리면 에러 내용을 붙여 최대 2번 다시 요청합니다.
+- `max_tokens` 로 잘리면 `AnalysisError` — `chunk_chars` 를 줄이거나 `AGENT_MAX_TOKENS` 를 늘리세요.
+
+## 현재 한계
+
+- **스캔본 PDF / 이미지 미지원**: 텍스트 레이어가 없으면 구조화할 수 없습니다 (OCR 없음).
+- **한 파일에 약관 여러 개**: 보험의 보통약관 + 특별약관처럼 조 번호가 1부터 다시 시작하면 `ARTICLE_DUPLICATE` 로 보고됩니다.
+- **표**: PDF 표는 텍스트 순서가 섞일 수 있고, 표 구조는 보존하지 않습니다.
+- **한 줄에 표기 여러 개**: `① … ② …` 가 한 줄에 붙어 있으면 하나의 항으로 읽습니다.
+- **결과 저장 안 함**: 결과는 Streamlit 세션과 trace 에만 남습니다 (JSON 다운로드 가능).
+- AI 분석은 법률 자문이 아니며, 분석 검증은 **근거의 존재**만 확인하고 판단의 옳고 그름은 확인하지 않습니다.
