@@ -45,7 +45,7 @@ from terms import parse_terms, validate_structure, run_terms_pipeline
 
 doc = parse_terms(text)
 issues = validate_structure(doc)
-report = run_terms_pipeline(text, provider="anthropic")
+report = run_terms_pipeline(text)
 ```
 
 ## Agent

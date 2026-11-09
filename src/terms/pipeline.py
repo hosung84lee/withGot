@@ -5,10 +5,9 @@
 
 from collections.abc import Callable
 
-from agent.providers import LLMProvider
+from agent.llm import OpenAIClient
 from backend.storage import get_document
 from backend.tracing import span
-from schema.agent import ProviderName
 from schema.terms import TermsReport
 from terms.analyzer import DEFAULT_CHUNK_CHARS, AnalysisError, analyze_terms
 from terms.extract import document_to_text
@@ -28,7 +27,7 @@ def run_terms_pipeline(
     doc_id: int | None = None,
     source: str = "직접 입력",
     analyze: bool = True,
-    provider: LLMProvider | ProviderName | None = None,
+    llm: OpenAIClient | None = None,  # 테스트용 가짜 LLM 등. 없으면 model 로 생성
     model: str | None = None,
     chunk_chars: int = DEFAULT_CHUNK_CHARS,
     on_step: Callable[[int, str], None] | None = None,
@@ -83,7 +82,7 @@ def run_terms_pipeline(
             try:
                 with span("step", "AI 분석") as s:
                     report.analysis = analyze_terms(
-                        terms, provider=provider, model=model, chunk_chars=chunk_chars
+                        terms, llm=llm, model=model, chunk_chars=chunk_chars
                     )
                     s.set(output={"clauses": len(report.analysis.clauses)})
             except AnalysisError as e:

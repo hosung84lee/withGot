@@ -42,7 +42,7 @@ print(doc.find("제5조").full_text())
 for issue in validate_structure(doc):
     print(issue.severity, issue.code, issue.message)
 
-report = run_terms_pipeline(text, provider="anthropic")   # 또는 doc_id=3 (보관함 PDF)
+report = run_terms_pipeline(text)   # 또는 doc_id=3 (보관함 PDF), model="gpt-6-luna"
 report.analysis.clauses        # 조별 분석
 report.issues                  # 구조 검증 + 분석 검증
 report.analysis_error          # AI 분석 실패 사유 (성공하면 None)

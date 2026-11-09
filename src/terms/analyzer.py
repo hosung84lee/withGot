@@ -14,9 +14,9 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from agent import Agent
-from agent.providers import LLMProvider
+from agent.llm import OpenAIClient
 from backend.tracing import span
-from schema.agent import AgentMessage, ProviderName
+from schema.agent import AgentMessage
 from schema.terms import (
     CLAUSE_CATEGORIES,
     UNFAIR_TYPES,
@@ -141,7 +141,7 @@ def ask_json(agent: Agent, prompt: str, model: type[M], retries: int = JSON_RETR
 
 def analyze_terms(
     doc: TermsDocument,
-    provider: LLMProvider | ProviderName | None = None,
+    llm: OpenAIClient | None = None,
     model: str | None = None,
     chunk_chars: int = DEFAULT_CHUNK_CHARS,
     on_progress: Callable[[int, int], None] | None = None,
@@ -149,9 +149,7 @@ def analyze_terms(
     targets = [a for a in doc.articles if not a.deleted]
     if not targets:
         raise AnalysisError("분석할 조가 없습니다.")
-    agent = Agent(
-        provider, model=model, system=SYSTEM, tools=[], max_turns=1, name="terms-analyzer"
-    )
+    agent = Agent(model, llm=llm, system=SYSTEM, tools=[], max_turns=1, name="terms-analyzer")
     title = doc.title or "(제목 없음)"
 
     chunks = chunk_articles(targets, chunk_chars)
@@ -199,4 +197,4 @@ def analyze_terms(
         )
         s.set(output=overview.model_dump())
 
-    return TermsAnalysis(overview=overview, clauses=clauses, model=agent.provider.model)
+    return TermsAnalysis(overview=overview, clauses=clauses, model=agent.llm.model)
