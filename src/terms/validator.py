@@ -50,11 +50,26 @@ def validate_structure(doc: TermsDocument) -> list[ValidationIssue]:
 
     issues += _check_headings(doc)
 
-    groups: dict[int, list[Article]] = defaultdict(list)
+    for i, part in enumerate(doc.parts):
+        if not any(a.part == i for a in doc.articles):
+            issues.append(
+                _issue(
+                    "warning",
+                    "PART_WITHOUT_ARTICLES",
+                    f"'{part.title}'에서 조를 찾지 못했습니다. "
+                    "'제1-1조' 같은 편-조 번호는 아직 구조화하지 않습니다.",
+                    label=part.title,
+                    line=part.line,
+                )
+            )
+
+    # 조 번호는 약관(주계약·특약)마다, 그 안에서 본문·부칙마다 따로 매깁니다
+    groups: dict[tuple[int, int], list[Article]] = defaultdict(list)
     for a in doc.articles:
-        groups[a.addendum or 0].append(a)
-    for addendum, arts in groups.items():
-        issues += _check_article_numbers(arts, "부칙 " if addendum else "")
+        groups[(a.part if a.part is not None else -1, a.addendum or 0)].append(a)
+    for (part, addendum), arts in groups.items():
+        prefix = f"[{doc.parts[part].title}] " if part >= 0 and len(doc.parts) > 1 else ""
+        issues += _check_article_numbers(arts, prefix + ("부칙 " if addendum else ""))
 
     for a in doc.articles:
         issues += _check_article(a)
@@ -74,7 +89,10 @@ def _check_headings(doc: TermsDocument) -> list[ValidationIssue]:
     issues = []
     local: dict[str, int] = {}  # 현재 상위 제목 아래 마지막 번호
     total: dict[str, int] = {}  # 문서 전체 마지막 번호
+    part = None
     for h in doc.headings:
+        if h.part != part:  # 약관(특약)이 바뀌면 번호를 처음부터
+            local, total, part = {}, {}, h.part
         level = HEADING_LEVEL[h.kind]
         for kind, lv in HEADING_LEVEL.items():
             if lv > level:
@@ -231,16 +249,26 @@ def _count_items(a: Article, paragraph: int | None) -> int:
 
 def _check_references(doc: TermsDocument) -> list[ValidationIssue]:
     issues = []
-    body = {(a.number, a.sub): a for a in doc.body_articles}
+    # 약관(part)별 본문 조. 같은 약관 안에서 먼저 찾고, 없으면 다른 약관(주계약 등)에서 찾음
+    body_by_part: dict[int | None, dict[tuple[int, int | None], Article]] = defaultdict(dict)
+    body_any: dict[tuple[int, int | None], Article] = {}
+    for x in doc.body_articles:
+        body_by_part[x.part].setdefault((x.number, x.sub), x)
+        body_any.setdefault((x.number, x.sub), x)
     for a in doc.articles:
-        group = {(x.number, x.sub): x for x in doc.articles if x.addendum == a.addendum}
+        group = {
+            (x.number, x.sub): x
+            for x in doc.articles
+            if x.addendum == a.addendum and x.part == a.part
+        }
         for ref in a.references:
             if ref.article == 0:  # 같은 조의 항
                 target = a
             else:
                 key = (ref.article, ref.sub)
+                body = body_by_part[a.part].get(key) or body_any.get(key)
                 # 부칙에서는 같은 부칙 안의 조를 먼저 찾고, 없으면 본문에서 찾음
-                target = (group.get(key) or body.get(key)) if a.addendum else body.get(key)
+                target = (group.get(key) or body) if a.addendum else body
                 if target is None:
                     issues.append(
                         _issue(

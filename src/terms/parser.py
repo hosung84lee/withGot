@@ -14,6 +14,16 @@ LLM 없이 규칙(정규식)으로 나눕니다. 결과가 매번 같고, 줄 �
 
 한 줄에 하나의 표기만 시작한다고 가정합니다 (PDF 에서 뽑은 텍스트의 일반적인 모양).
 표기가 없는 줄은 바로 앞 요소의 본문이 이어지는 것으로 봅니다.
+
+보험사 약관 PDF 는 본문 앞에 목차·안내 페이지가 붙어 있어서 다음을 따로 처리합니다.
+- 목차 줄: 제목 뒤에 쪽 번호만 있는 줄 ('제 1 조 [보장종목] 5', '[별표 1] 용어의 정의 35')은 건너뜀
+- 두 줄로 끊긴 괄호 제목 ('제4조의2 [‘기본형 …에서' + '보상하지 않는 사항]')은 이어 붙여 읽음
+- 별표 뒤에 다시 관 제목이나 괄호 제목 조가 나오면 별표를 닫고 본문으로 돌아감
+  (주계약 별표 뒤에 특약 약관이 이어지는 PDF)
+- 목차·안내 페이지에서 잡힌 본문 없는 조와 빈 관 제목은, 뒤에 같은 조·관의 실제 본문이
+  있으면 지움
+- 주계약 약관 뒤에 특약 약관이 이어지는 PDF 는 '○○특약(무배당) 약관' 같은 제목 줄에서
+  약관(part)을 나눔. 조 번호는 약관마다 1부터 다시 시작
 """
 
 import re
@@ -27,6 +37,7 @@ from schema.terms import (
     Item,
     Paragraph,
     TermsDocument,
+    TermsPart,
 )
 
 # ---------------------------------------------------------------- 표기 패턴
@@ -62,6 +73,24 @@ _REF = re.compile(
 _PARA_REF = re.compile(r"제\s*(\d+)\s*항")
 # 인용 바로 앞이 법령 이름이면 다른 법의 조문 ('상법 제638조', '「약관법」 제6조')
 _EXTERNAL_BEFORE = re.compile(r"(」|』|법|법률|령|규칙|규정|조례|협약|고시)\s*$")
+# 목차 줄 끝의 쪽 번호
+_TOC_PAGE = re.compile(r"^\d{1,3}$")
+_TOC_TITLE_PAGE = re.compile(r"^\S.*\s\d{1,3}$")
+# 괄호 제목이 다음 줄에서 닫히는 경우, 닫는 괄호 뒤
+_CLOSE_TAIL = re.compile(r"^[^\[\]【】〔〕［］]*[\]】〕］)]\s*(.*)$")
+# 목차 제목과 본문 제목을 비교할 때 공백·문장부호 무시
+_TITLE_NOISE = re.compile(r"[\s\W_]+")
+# 본문 없는 조로 보는 길이 (목차·안내 페이지의 조 제목 줄)
+_STUB_MAX = 200
+# 약관 제목 줄: '지정대리청구서비스특약 약관', '삼성 인터넷암보험(2404)(갱신형,무배당) 약관'
+_PART_TITLE = re.compile(r"^\S.{1,80}\s?약관$")
+_PARENS = re.compile(r"\([^()]*\)")
+_PART_NOISE = re.compile(r"[,“”\"'‘’]|에서|할 때")
+_PART_NEXT = re.compile(r"^(※|제\s*1\s*(관|장|편|조))")
+# 표지·목차의 분류 이름. 약관 제목으로 보지 않음
+_PART_GENERIC = {"약관", "보험약관", "주계약약관", "특약약관", "제도성특약약관"}
+# 부록 (약관에서 인용된 법령 등): 법령 조문이 이어지므로 구조화하지 않고 원문 보관
+_ANNEX = re.compile(r"^[\[【]?\s*부\s*록\s*[\]】]?\s*(\S.*)$")
 
 
 def _split_title(rest: str) -> tuple[str | None, str]:
@@ -128,6 +157,8 @@ class _Builder:
         self.appendix: Appendix | None = None
         self.preamble: list[str] = []
         self.last: Item | Paragraph | None = None  # 이어지는 줄을 붙일 대상
+        self.part: int | None = None  # 현재 약관 (doc.parts 위치)
+        self.annex = False  # 부록 안: 새 약관이나 제1관이 나올 때까지 원문 그대로 보관
 
     # --- 이어 쓰기
     def _append(self, text: str) -> None:
@@ -157,7 +188,7 @@ class _Builder:
 
     # --- 각 표기
     def heading(self, kind: str, number: int, title: str, line: int) -> None:
-        h = Heading(kind=kind, number=number, title=title, line=line)  # type: ignore[arg-type]
+        h = Heading(kind=kind, number=number, title=title, line=line, part=self.part)  # type: ignore[arg-type]
         level = HEADING_LEVEL[kind]
         self.stack = [s for s in self.stack if HEADING_LEVEL[s.kind] < level] + [h]
         self.doc.headings.append(h)
@@ -176,6 +207,7 @@ class _Builder:
             deleted=deleted,
             path=[] if self.addendum else [h.label for h in self.stack],
             addendum=self.addendum or None,
+            part=self.part,
             line=line,
         )
         self.doc.articles.append(self.article)
@@ -194,10 +226,24 @@ class _Builder:
         self.last = None
         self._reset_items()
 
-    def start_appendix(self, label: str, line: int) -> None:
+    def start_part(self, title: str, line: int) -> None:
+        """새 약관 시작: 제목 경로·부칙·별표를 모두 닫음."""
+        self._close_addendum_text()
+        self.part = len(self.doc.parts)
+        self.doc.parts.append(TermsPart(title=title, line=line))
+        self.stack = []
+        self.article = self.paragraph = None
+        self.appendix = None
+        self.annex = False
+        self.addendum = 0
+        self.last = None
+        self._reset_items()
+
+    def start_appendix(self, label: str, line: int, annex: bool = False) -> None:
         self._close_addendum_text()
         self.appendix = Appendix(label=label, text="", line=line)
         self.doc.appendices.append(self.appendix)
+        self.annex = annex
 
     def line(self, text: str, lineno: int) -> None:
         """조 본문 안의 한 줄: 항 / 호 / 목 / 세목 / 이어지는 줄."""
@@ -247,9 +293,118 @@ class _Builder:
         if lines and not doc.title and len(lines[0]) <= 60:
             doc.title = lines.pop(0)
         doc.preamble = "\n".join(lines)
+        _drop_toc_stubs(doc)
+        _drop_empty_parts(doc)
         for a in doc.articles:
             a.references = extract_references(a.full_text())
         return doc
+
+
+def _norm_title(title: str | None) -> str:
+    return _TITLE_NOISE.sub("", title or "")
+
+
+def _same_title(a: str | None, b: str | None) -> bool:
+    na, nb = _norm_title(a), _norm_title(b)
+    if not na or not nb:
+        return True  # 제목 한쪽이 없으면 번호만으로 판단
+    return na == nb or na.startswith(nb) or nb.startswith(na)
+
+
+def _drop_toc_stubs(doc: TermsDocument) -> None:
+    """목차·안내 페이지에서 잡힌 조와 관 제목을 지움.
+
+    본문이 거의 없는 조 뒤에 같은 번호·같은 제목의 조가 더 긴 본문으로 다시 나오면
+    앞의 것은 목차 항목으로 봅니다. 아래에 조가 하나도 남지 않은 관 제목도
+    뒤에 같은 관 제목이 다시 나오면 지웁니다.
+    """
+    arts = doc.articles
+    lengths = [len(a.full_text()) for a in arts]
+    has_parts = any(a.part is not None for a in arts)
+    keep: list[Article] = []
+    for i, a in enumerate(arts):
+        n = lengths[i]
+        later = arts[i + 1 :]
+        # 다른 특약의 같은 번호 조는 지우지 않음 (목차는 약관 제목 줄 앞이라 part 가 None)
+        stub = n < _STUB_MAX and any(
+            b.label == a.label
+            and (a.part is None or a.part == b.part)
+            and _same_title(a.title, b.title)
+            and lengths[j] >= max(2 * n, n + 40)
+            for j, b in enumerate(later, start=i + 1)
+        )
+        # 첫 약관 제목 줄 앞(표지·안내)의 조가 뒤 약관에 같은 번호·같은 제목으로 다시 나오면
+        # 안내 페이지 항목. 뒤따르는 안내문까지 본문으로 붙어 길어졌을 수 있어 길이는 보지 않음
+        if not stub and has_parts and a.part is None and a.title:
+            stub = any(
+                b.part is not None
+                and b.label == a.label
+                and _norm_title(b.title) == _norm_title(a.title)
+                for b in later
+            )
+        if not stub:
+            keep.append(a)
+    doc.articles = keep
+
+    heads = doc.headings
+    art_lines = sorted(a.line for a in keep)
+    kept_heads: list[Heading] = []
+    for i, h in enumerate(heads):
+        end = heads[i + 1].line if i + 1 < len(heads) else float("inf")
+        has_article = any(h.line < ln < end for ln in art_lines)
+        repeated = any(
+            g.kind == h.kind
+            and g.number == h.number
+            and (h.part is None or h.part == g.part)
+            and _same_title(g.title, h.title)
+            for g in heads[i + 1 :]
+        )
+        if has_article or not repeated:
+            kept_heads.append(h)
+    doc.headings = kept_heads
+
+    # 목차에서 잡힌 별표·부록 (내용이 거의 없고 뒤에 같은 제목이 다시 나옴)
+    apps = doc.appendices
+    doc.appendices = [
+        x
+        for i, x in enumerate(apps)
+        if len(x.text) >= _STUB_MAX
+        or not any(
+            _same_title(x.label, y.label) and len(y.text) > len(x.text) for y in apps[i + 1 :]
+        )
+    ]
+
+
+def _drop_empty_parts(doc: TermsDocument) -> None:
+    """조도 관 제목도 없는 약관 제목(목차 페이지의 '주계약 약관' 등)을 지우고 번호를 다시 매김.
+
+    관 제목은 있는데 조가 없는 약관(지원하지 않는 '제1-1조' 번호 등)은 남겨서 검증에서 알립니다.
+    """
+    used = sorted({x.part for x in [*doc.articles, *doc.headings] if x.part is not None})
+    remap = {old: new for new, old in enumerate(used)}
+    doc.parts = [doc.parts[i] for i in used]
+    for x in [*doc.articles, *doc.headings]:
+        x.part = remap.get(x.part) if x.part is not None else None
+
+
+def _part_title(lines: list[str], i: int) -> str | None:
+    """약관 제목 줄이면 제목. 앞 줄이 쪽 번호(새 페이지)이거나 다음 줄이 ※ 안내·제1관·제1조여야 함."""
+    line = lines[i]
+    if not _PART_TITLE.match(line) or len(line) > 90:
+        return None
+    if _TITLE_NOISE.sub("", line) in _PART_GENERIC:
+        return None
+    if line[0].isdigit() or circled_value(line[0]) or line[0] in "ㆍ∙·-":
+        return None
+    if _PART_NOISE.search(_PARENS.sub("", line)):
+        return None
+    if _ARTICLE.match(line) or _HEADING.match(line) or _APPENDIX.match(line):
+        return None
+    prev = next((ln for ln in reversed(lines[max(0, i - 4) : i]) if ln), "")
+    nxt = next((ln for ln in lines[i + 1 : i + 5] if ln), "")
+    if (prev and _PAGE_NO.match(prev)) or _PART_NEXT.match(nxt):
+        return line
+    return None
 
 
 def normalize(text: str) -> list[str]:
@@ -258,10 +413,87 @@ def normalize(text: str) -> list[str]:
     return [ln.strip() for ln in text.split("\n")]
 
 
+def _join_split_title(lines: list[str], i: int) -> tuple[str, int]:
+    """'제N조 [제목 앞부분' 처럼 괄호가 안 닫힌 조 시작 줄이면 다음 줄과 이어 붙임.
+
+    (이어 붙인 줄, 함께 읽은 줄 수) 를 돌려줍니다. 해당 없으면 (원래 줄, 0).
+    """
+    line = lines[i]
+    m = _ARTICLE.match(line)
+    if not m:
+        return line, 0
+    rest = m.group(3).strip()
+    if not rest or rest[0] not in _OPEN or _OPEN[rest[0]] in rest:
+        return line, 0
+    for k in (1, 2):
+        if i + k >= len(lines):
+            break
+        nxt = lines[i + k]
+        if not nxt:
+            continue
+        if _CLOSE_TAIL.match(nxt):
+            return f"{line} {nxt}", k
+        break
+    return line, 0
+
+
+def _is_toc_entry(line: str) -> bool:
+    """제목 뒤에 쪽 번호만 붙은 목차 줄인지."""
+    if (h := _parse_article_header(line)) is not None:
+        _, _, title, body, _ = h
+        return title is not None and bool(_TOC_PAGE.match(body))
+    m = _APPENDIX.match(line)
+    if m and m.group(1) and m.group(4) and _parse_appendix_header(line) is not None:
+        return bool(_TOC_TITLE_PAGE.match(m.group(5).strip()))
+    if m := _HEADING.match(line):
+        return bool(_TOC_TITLE_PAGE.match((m.group(3) or "").strip()))
+    if m := _ANNEX.match(line):
+        return bool(_TOC_TITLE_PAGE.match(m.group(1)) or re.search(r"\D\s?\d{1,3}$", m.group(1)))
+    return False
+
+
+def _heading_match(line: str) -> tuple[str, int, str] | None:
+    if m := _HEADING.match(line):
+        title = (m.group(3) or "").strip()
+        if len(title) <= 40 and not title.endswith("."):
+            return m.group(2), int(m.group(1)), title
+    return None
+
+
+def _resumes_body(line: str) -> bool:
+    """별표 안에서 본문이 다시 시작되는 줄인지 (관 제목, 또는 괄호 제목이 붙은 조)."""
+    if (h := _heading_match(line)) is not None and h[0] in ("편", "장", "관"):
+        return True
+    m = _ARTICLE.match(line)
+    rest = m.group(3).strip() if m else ""
+    return bool(rest) and rest[0] in _OPEN and _parse_article_header(line) is not None
+
+
 def parse_terms(text: str) -> TermsDocument:
     b = _Builder()
-    for lineno, line in enumerate(normalize(text), start=1):
+    lines = normalize(text)
+    i = 0
+    while i < len(lines):
+        lineno = i + 1
+        line, used = _join_split_title(lines, i)
+        i += 1 + used
         if not line or _PAGE_NO.match(line):
+            continue
+        if _is_toc_entry(line):
+            continue
+        if not used and (title := _part_title(lines, lineno - 1)) is not None:
+            b.start_part(title, lineno)
+            continue
+
+        if b.annex:
+            hm = _heading_match(line)
+            if hm and hm[0] in ("편", "장", "관") and hm[1] == 1:
+                b.appendix, b.annex = None, False  # 부록 뒤에 새 약관 본문 시작
+            else:
+                b.appendix.text = f"{b.appendix.text}\n{line}".strip()
+                continue
+        if m := _ANNEX.match(line):
+            b.start_appendix(f"부록 {m.group(1)}", lineno, annex=True)
             continue
 
         if _ADDENDUM.match(line):
@@ -270,14 +502,15 @@ def parse_terms(text: str) -> TermsDocument:
         if (label := _parse_appendix_header(line)) is not None:
             b.start_appendix(label, lineno)
             continue
-        if b.appendix:  # 별표 안의 내용은 구조화하지 않고 그대로 보관
-            b.appendix.text = f"{b.appendix.text}\n{line}".strip()
-            continue
-        if (m := _HEADING.match(line)) and not b.addendum:
-            title = (m.group(3) or "").strip()
-            if len(title) <= 40 and not title.endswith("."):
-                b.heading(m.group(2), int(m.group(1)), title, lineno)
+        if b.appendix:
+            if _resumes_body(line):
+                b.appendix = None
+            else:  # 별표 안의 내용은 구조화하지 않고 그대로 보관
+                b.appendix.text = f"{b.appendix.text}\n{line}".strip()
                 continue
+        if (hm := _heading_match(line)) and not b.addendum:
+            b.heading(hm[0], hm[1], hm[2], lineno)
+            continue
         if (h := _parse_article_header(line)) is not None:
             b.start_article(*h, line=lineno)
             continue

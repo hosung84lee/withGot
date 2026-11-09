@@ -12,11 +12,19 @@ HeadingKind = Literal["편", "장", "절", "관"]
 HEADING_LEVEL: dict[str, int] = {"편": 0, "장": 1, "절": 2, "관": 3}
 
 
+class TermsPart(BaseModel):
+    """한 PDF 에 묶인 약관 하나 (주계약 약관, ○○특약 약관 …). 조 번호는 약관마다 1부터 다시 매깁니다."""
+
+    title: str
+    line: int
+
+
 class Heading(BaseModel):
     kind: HeadingKind
     number: int
     title: str
     line: int  # 원문 줄 번호 (1부터)
+    part: int | None = None  # TermsDocument.parts 의 위치. 약관 제목 줄이 없으면 None
 
     @property
     def label(self) -> str:
@@ -62,6 +70,7 @@ class Article(BaseModel):
     paragraphs: list[Paragraph] = Field(default_factory=list)
     path: list[str] = Field(default_factory=list)  # 상위 제목 (예: ["제2관 보험금의 지급"])
     addendum: int | None = None  # 부칙 소속이면 몇 번째 부칙인지 (1부터)
+    part: int | None = None  # TermsDocument.parts 의 위치. 약관 제목 줄이 없으면 None
     line: int
     references: list[ArticleRef] = Field(default_factory=list)
 
@@ -99,6 +108,7 @@ class Appendix(BaseModel):
 class TermsDocument(BaseModel):
     title: str = ""
     preamble: str = ""  # 첫 조 이전의 본문 (제목 제외)
+    parts: list[TermsPart] = Field(default_factory=list)  # 주계약·특약이 묶인 PDF 의 약관별 제목
     headings: list[Heading] = Field(default_factory=list)
     articles: list[Article] = Field(default_factory=list)
     addenda: list[str] = Field(default_factory=list)  # 부칙 제목 줄 (예: "부칙 <2024.1.1>")
