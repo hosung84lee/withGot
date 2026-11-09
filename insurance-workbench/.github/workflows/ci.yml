@@ -1,0 +1,41 @@
+name: Verify Bojangit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Install locked dependencies
+        run: |
+          uv sync --locked
+          npm --prefix apps/web ci
+      - name: Check API and build web
+        run: bash scripts/check.sh
+      - name: Install test browser
+        working-directory: apps/web
+        run: npx --no-install playwright install --with-deps chromium
+      - name: Run browser tests
+        run: |
+          bash scripts/dev.sh &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          curl --fail --silent --show-error --retry 30 --retry-connrefused --retry-delay 1 http://127.0.0.1:5173/api/health
+          npm --prefix apps/web run test:privacy

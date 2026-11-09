@@ -1,0 +1,148 @@
+[
+  {
+    "file": "samsungfire_silson_2605_1.pdf",
+    "url": "https://direct.samsungfire.com/docs/realloss.pdf",
+    "kind": "policy",
+    "bytes": 2519879,
+    "sha256": "db0ed9738c9f59fbb28b678b910e0bdd3ef4bf08bdac52643c2e2dd167003415",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "pages": 157,
+    "license_status": "공개 접근 가능; 재배포·학습 이용 허락은 별도 확인 필요",
+    "note": "계약전환용 2605.1. 첨부 삼성생명 상품과 별개 상품이며 규칙 혼용 금지"
+  },
+  {
+    "file": "samsungfire_health_20150901.pdf",
+    "url": "https://www.samsungfire.com/publication/pdf/96035_0_20150901_file3.pdf",
+    "kind": "product_summary",
+    "bytes": 1900568,
+    "sha256": "429a113f32d4dbfc773c282844e6ac2b55f0d2d773d9dd0dd85f861543894241",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "note": "상품요약서이며 보험약관 원문이 아님",
+    "pages": 50,
+    "license_status": "공개 접근 가능; 재배포·학습 이용 허락은 별도 확인 필요"
+  },
+  {
+    "file": "vaccination_guideline_2026.pdf",
+    "url": "https://www.ulsancidc.or.kr/_Data/Board/ucidc_gl/c75ccf75e50b933e2991a3c4ffdadd11.pdf",
+    "kind": "official_examples",
+    "bytes": 17509864,
+    "sha256": "ab42c91d7aa8f57fa2b55de0e3aab72775df3f54a7cc1e026e601fd1b62438b8",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "pages": 236,
+    "license_status": "공개 접근 가능; 재배포·학습 이용 허락은 별도 확인 필요",
+    "sample_pages": [
+      94
+    ],
+    "sample_type": "진료비 영수증 작성 예시",
+    "ocr_required_for_sample": true
+  },
+  {
+    "file": "medical_forms_sangju.pdf",
+    "url": "https://health.sangju.go.kr/fileUpload/board/1614923703910.pdf",
+    "status": "failed",
+    "error": "HTTP Error 503: Service Unavailable"
+  },
+  {
+    "file": "medical_expense_detail_lina.pdf",
+    "url": "https://m.lina.co.kr/upload/docs/claim/exam/medical_expense_detail.pdf",
+    "kind": "medical_form",
+    "bytes": 276323,
+    "sha256": "a90451514f7514333b3c922983a68a9753b438893200095dd533b1b81f333384",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "pages": 1,
+    "license_status": "공개 접근 가능; 재배포·학습 이용 허락은 별도 확인 필요",
+    "sample_type": "빈 세부산정내역 표준서식과 작성 설명",
+    "ocr_required_for_sample": true
+  },
+  {
+    "file": "medical_expense_detail_hira.pdf",
+    "url": "https://www.hira.or.kr/ebooksc/ebook_602/ebook_602_202010200956269970.pdf",
+    "status": "failed",
+    "error": "The read operation timed out"
+  },
+  {
+    "file": "covid_compensation_kdca.pdf",
+    "url": "https://www.kdca.go.kr/bbs/kdca/55/260168/download.do",
+    "status": "failed",
+    "error": "HTTP Error 503: Service Unavailable"
+  },
+  {
+    "file": "samsungfire_integrated_1604_1.pdf",
+    "url": "https://www.samsungfire.com/publication/pdf/96116_0_20160411_file1.pdf",
+    "kind": "historical_policy",
+    "bytes": 8095150,
+    "sha256": "dc027f3ac2b808ebac48f86af586013e30f677cb32cb0dc031e7f9ce1902ebc7",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "pages": 804,
+    "license_status": "공개 접근 가능; 재배포·학습 이용 허락은 별도 확인 필요",
+    "note": "2016년 과거 상품 약관. 과거 문서 구조 확인용이며 현재 상품 규칙으로 적용하지 않음"
+  },
+  {
+    "file": "official_outpatient_receipt_form.pdf",
+    "url": "https://www.law.go.kr/LSW/flDownload.do?flNm=%5B%EB%B3%84%EC%A7%80+%EC%A0%9C12%ED%98%B8%EC%84%9C%EC%8B%9D%5D+%EA%B0%84%EC%9D%B4+%EC%99%B8%EB%9E%98+%EC%A7%84%EB%A3%8C%EB%B9%84+%EA%B3%84%EC%82%B0%EC%84%9C%E3%86%8D%EC%98%81%EC%88%98%EC%A6%9D%0A&flSeq=46242968",
+    "kind": "medical_form",
+    "bytes": 55062,
+    "sha256": "35ebfd0d6b79bdf840d9249189884d1cdb0f8fc14b5aaa6ffcefaf7fbc4b8ba4",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "sample_type": "공식 간이 외래 진료비 계산서·영수증 빈 서식",
+    "pages": 1
+  },
+  {
+    "file": "official_itemized_bill_front.bmp",
+    "url": "https://www.law.go.kr/LSW/flDownload.do?flSeq=33708769",
+    "kind": "medical_form",
+    "bytes": 330494,
+    "sha256": "6aa5ef72b01766fb0fea5d722be784ca608eb410ce7b61943617a58086a503cc",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "sample_type": "공식 진료비 세부산정내역 별지 앞면 빈 서식",
+    "dimensions": [
+      971,
+      677
+    ]
+  },
+  {
+    "file": "official_itemized_bill_back.bmp",
+    "url": "https://www.law.go.kr/LSW/flDownload.do?flSeq=33708770",
+    "kind": "medical_form",
+    "bytes": 564838,
+    "sha256": "482bf843ed987352723611814e8f6b0e1c069f178211f122c712765c6e47270f",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "sample_type": "공식 진료비 세부산정내역 별지 뒷면 작성 안내",
+    "dimensions": [
+      970,
+      580
+    ]
+  },
+  {
+    "file": "한화생명_H종신보험_무배당_약관_2025-10-03.pdf",
+    "url": "https://direct.hanwhalife.com/products/downloadProxy/%ED%95%9C%ED%99%94%EC%83%9D%EB%AA%85%20H%EC%A2%85%EC%8B%A0%EB%B3%B4%ED%97%98%20%EB%AC%B4%EB%B0%B0%EB%8B%B9_2209-A01_A17_%EC%95%BD%EA%B4%80_20251003_%20%20%20%20%20%20%20%20%20%20.pdf?docUrl=dynamic%2Fdirect%2Fproduct%2Fcms_63cwrTn2OVP7Yrj5_1762729388216.pdf",
+    "kind": "fixed_benefit_policy",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "pages": 285,
+    "bytes": 6342695,
+    "sha256": "459ac5afe138618bf91ede50f72c30fcf7c0aee6584048ebaacce94170457c01",
+    "note": "보장형 주계약의 사망보험금",
+    "license_status": "보험사 공식 공개 원본. 로컬 참고용으로 보관"
+  },
+  {
+    "file": "라이나생명_무배당건강보험암보험_약관_B00070001.pdf",
+    "url": "https://www.lina.co.kr/cms/upload/upload/docs/disclosure/B00070001_0_P.pdf",
+    "kind": "fixed_benefit_policy",
+    "status": "downloaded",
+    "retrieved_on": "2026-11-07",
+    "pages": 29,
+    "bytes": 1039598,
+    "sha256": "f88aae68e1314c6cffeca1aa78b536c8effe830641a3894c31eeac2a6602788a",
+    "note": "주계약의 암 관련 진단 급부 4종",
+    "license_status": "보험사 공식 공개 원본. 로컬 참고용으로 보관"
+  }
+]

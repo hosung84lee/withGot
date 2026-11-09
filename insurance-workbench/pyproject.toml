@@ -1,0 +1,16 @@
+[project]
+name = "insurance-workbench"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = ["fastapi", "uvicorn[standard]", "pydantic>=2", "pydantic-settings", "python-multipart", "pymupdf", "mcp>=1.0,<2", "sqlalchemy", "httpx"]
+
+[dependency-groups]
+dev = ["pytest", "ruff"]
+
+[tool.pytest.ini_options]
+pythonpath = ["apps/api"]
+testpaths = ["apps/api/tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
