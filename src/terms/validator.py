@@ -18,6 +18,7 @@ from schema.terms import (
     TermsAnalysis,
     TermsDocument,
     ValidationIssue,
+    article_label,
 )
 
 _MOK_ORDER = "가나다라마바사아자차카타파하"
@@ -57,19 +58,22 @@ def validate_structure(doc: TermsDocument) -> list[ValidationIssue]:
                     "warning",
                     "PART_WITHOUT_ARTICLES",
                     f"'{part.title}'에서 조를 찾지 못했습니다. "
-                    "'제1-1조' 같은 편-조 번호는 아직 구조화하지 않습니다.",
+                    "조 표기가 '제N조', '제N-M조' 가 아닌지 확인하세요.",
                     label=part.title,
                     line=part.line,
                 )
             )
 
-    # 조 번호는 약관(주계약·특약)마다, 그 안에서 본문·부칙마다 따로 매깁니다
-    groups: dict[tuple[int, int], list[Article]] = defaultdict(list)
+    # 조 번호는 약관(주계약·특약)마다, 그 안에서 본문·부칙마다, 편-조 번호면 편마다 따로 매깁니다
+    groups: dict[tuple[int, int, int], list[Article]] = defaultdict(list)
     for a in doc.articles:
-        groups[(a.part if a.part is not None else -1, a.addendum or 0)].append(a)
-    for (part, addendum), arts in groups.items():
+        key = (a.part if a.part is not None else -1, a.addendum or 0, a.volume or 0)
+        groups[key].append(a)
+    for (part, addendum, volume), arts in groups.items():
         prefix = f"[{doc.parts[part].title}] " if part >= 0 and len(doc.parts) > 1 else ""
-        issues += _check_article_numbers(arts, prefix + ("부칙 " if addendum else ""))
+        issues += _check_article_numbers(
+            arts, prefix + ("부칙 " if addendum else ""), volume or None
+        )
 
     for a in doc.articles:
         issues += _check_article(a)
@@ -123,8 +127,14 @@ def _check_headings(doc: TermsDocument) -> list[ValidationIssue]:
     return issues
 
 
-def _check_article_numbers(arts: list[Article], prefix: str) -> list[ValidationIssue]:
+def _check_article_numbers(
+    arts: list[Article], prefix: str, volume: int | None = None
+) -> list[ValidationIssue]:
     issues = []
+
+    def lb(n: int) -> str:
+        return article_label(n, volume=volume)
+
     seen = Counter((a.number, a.sub) for a in arts)
     for a in arts:
         if seen[(a.number, a.sub)] > 1:
@@ -143,9 +153,7 @@ def _check_article_numbers(arts: list[Article], prefix: str) -> list[ValidationI
     for a in mains:
         if a.number > expected:
             missing = (
-                f"제{expected}조"
-                if a.number == expected + 1
-                else f"제{expected}조~제{a.number - 1}조"
+                lb(expected) if a.number == expected + 1 else f"{lb(expected)}~{lb(a.number - 1)}"
             )
             issues.append(
                 _issue("warning", "ARTICLE_NUMBER_GAP", f"{prefix}{missing}가 없습니다.", a)
@@ -155,7 +163,7 @@ def _check_article_numbers(arts: list[Article], prefix: str) -> list[ValidationI
                 _issue(
                     "warning",
                     "ARTICLE_ORDER",
-                    f"{a.label}가 앞 조(제{expected - 1}조)보다 번호가 작습니다.",
+                    f"{a.label}가 앞 조({lb(expected - 1)})보다 번호가 작습니다.",
                     a,
                 )
             )
@@ -167,7 +175,7 @@ def _check_article_numbers(arts: list[Article], prefix: str) -> list[ValidationI
                 _issue(
                     "warning",
                     "ORPHAN_SUB_ARTICLE",
-                    f"{a.label}가 있지만 제{a.number}조가 없습니다.",
+                    f"{a.label}가 있지만 {lb(a.number)}가 없습니다.",
                     a,
                 )
             )
@@ -250,14 +258,16 @@ def _count_items(a: Article, paragraph: int | None) -> int:
 def _check_references(doc: TermsDocument) -> list[ValidationIssue]:
     issues = []
     # 약관(part)별 본문 조. 같은 약관 안에서 먼저 찾고, 없으면 다른 약관(주계약 등)에서 찾음
-    body_by_part: dict[int | None, dict[tuple[int, int | None], Article]] = defaultdict(dict)
-    body_any: dict[tuple[int, int | None], Article] = {}
+    # 키: (편, 조, 의N). 편-조 번호가 아니면 편은 None
+    Key = tuple[int | None, int, int | None]
+    body_by_part: dict[int | None, dict[Key, Article]] = defaultdict(dict)
+    body_any: dict[Key, Article] = {}
     for x in doc.body_articles:
-        body_by_part[x.part].setdefault((x.number, x.sub), x)
-        body_any.setdefault((x.number, x.sub), x)
+        body_by_part[x.part].setdefault((x.volume, x.number, x.sub), x)
+        body_any.setdefault((x.volume, x.number, x.sub), x)
     for a in doc.articles:
         group = {
-            (x.number, x.sub): x
+            (x.volume, x.number, x.sub): x
             for x in doc.articles
             if x.addendum == a.addendum and x.part == a.part
         }
@@ -265,7 +275,7 @@ def _check_references(doc: TermsDocument) -> list[ValidationIssue]:
             if ref.article == 0:  # 같은 조의 항
                 target = a
             else:
-                key = (ref.article, ref.sub)
+                key = (ref.volume, ref.article, ref.sub)
                 body = body_by_part[a.part].get(key) or body_any.get(key)
                 # 부칙에서는 같은 부칙 안의 조를 먼저 찾고, 없으면 본문에서 찾음
                 target = (group.get(key) or body) if a.addendum else body

@@ -107,8 +107,9 @@ def test_rider_reference_resolves_within_part(bundle):
 
 
 def test_part_without_articles_is_reported():
-    text = BUNDLE.replace("제 1 조 [적용 대상]", "제1-1조 [적용 대상]").replace(
-        "제 2 조 [지정대리청구인의 지정]", "제1-2조 [지정대리청구인의 지정]"
+    # 지원하지 않는 조 표기(한자 '第1條')만 있는 특약
+    text = BUNDLE.replace("제 1 조 [적용 대상]", "第1條 [적용 대상]").replace(
+        "제 2 조 [지정대리청구인의 지정]", "第2條 [지정대리청구인의 지정]"
     )
     doc = parse_terms(text)
     issues = [i for i in validate_structure(doc) if i.code == "PART_WITHOUT_ARTICLES"]
@@ -119,6 +120,103 @@ def test_plain_terms_without_parts_unchanged():
     # 약관 제목 줄이 없는 일반 약관은 part 없이 그대로
     doc = parse_terms("제1조(목적)\n본문\n제2조(정의)\n① 정의 본문")
     assert doc.parts == [] and [a.part for a in doc.articles] == [None, None]
+
+
+# ---------------------------------------------------------------- 편-조 번호 (제1-1조)
+# 인터넷비갱신암보험 PDF 모양: 여러 특약이 함께 쓰는 '[특약 약관] 제1편 일반사항' 과
+# 특약마다의 '제2편 개별사항' 이 '제1-1조', '제2-1조의2' 처럼 편-조 번호를 씀
+
+VOLUME_TERMS = """\
+4
+테스트 암보험(2601)(무배당) 약관
+※ 이 상품은 해약환급금이 없습니다.
+제1관 목적
+제1조 [목적]
+이 계약은 암을 보장합니다.
+50
+[특약 약관] 제1편 일반사항
+제1편 일반사항
+제1관 목적 및 용어의 정의
+제1-1조 [목적]
+① 특약은 제2-2조(보험금의 지급사유)에 해당하는 피보험자의 위험을 보장합니다.
+제1-2조 [용어의 정의]
+이 특약에서 사용하는 용어는 주계약 약관을 따릅니다.
+57
+테스트 암진단특약(무배당) 약관
+※ 이 특약은 해약환급금이 없습니다.
+제1편 일반사항
+[특약 약관] 제1편 일반사항 제1-1조부터 제1-2조까지의 규정을 이 특약 제1편 일반사항으로 합니다.
+제2편 개별사항
+제1관 용어의 정의 등
+제2-1조 [용어의 정의]
+① 보험기간은 제2-1조의2(특약의 보험기간)에서 정한 기간을 말합니다.
+② 이 특약에서 정하지 않은 용어는 제1-2조를 따릅니다.
+제2-1조의2 [특약의 보험기간]
+이 특약의 보험기간은 계약자가 선택한 기간으로 합니다.
+제2-2조 [보험금의 지급사유]
+① 회사는 암으로 진단 확정된 경우 제1-2조(용어의 정의)에 따라 보험금을 지급합니다.
+② 제2-1조(용어의 정의) 제1항부터 제2항까지는 적용하지 않습니다.
+"""
+
+
+@pytest.fixture(scope="module")
+def volume_doc():
+    return parse_terms(VOLUME_TERMS)
+
+
+def test_volume_articles_parsed(volume_doc):
+    doc = volume_doc
+    assert [p.title for p in doc.parts] == [
+        "테스트 암보험(2601)(무배당) 약관",
+        "[특약 약관] 제1편 일반사항",
+        "테스트 암진단특약(무배당) 약관",
+    ]
+    by_part = [[a.label for a in doc.articles if a.part == i] for i in range(3)]
+    assert by_part == [["제1조"], ["제1-1조", "제1-2조"], ["제2-1조", "제2-1조의2", "제2-2조"]]
+    a = doc.articles[-1]
+    assert (a.volume, a.number, a.sub, a.title) == (2, 2, None, "보험금의 지급사유")
+    assert doc.find("제2-1조의2").title == "특약의 보험기간"
+    # 특약의 '[특약 약관] 제1편 일반사항 제1-1조부터 …' 안내 문장은 약관 제목도 조도 아님
+    guide = VOLUME_TERMS.splitlines().index(
+        "[특약 약관] 제1편 일반사항 제1-1조부터 제1-2조까지의 규정을 이 특약 제1편 일반사항으로 합니다."
+    )
+    assert all(a.line != guide + 1 for a in doc.articles)
+
+
+def test_volume_references(volume_doc):
+    refs = {a.label: [r.article_label for r in a.references] for a in volume_doc.articles}
+    assert refs["제1-1조"] == ["제2-2조"]
+    assert refs["제2-1조"] == ["제2-1조의2", "제1-2조"]
+    assert refs["제2-2조"] == ["제1-2조", "제2-1조", "제2-1조"]  # 범위로 이어진 항도 편을 따름
+
+
+def test_volume_validation(volume_doc):
+    found = codes(validate_structure(volume_doc))
+    for code in (
+        "PART_WITHOUT_ARTICLES",
+        "BROKEN_REFERENCE",
+        "ARTICLE_DUPLICATE",
+        "ARTICLE_ORDER",
+        "ARTICLE_NUMBER_GAP",
+    ):
+        assert found[code] == 0, code
+
+
+def test_volume_number_gap_message():
+    doc = parse_terms("제2-1조 [정의]\n본문\n제2-3조 [지급]\n본문")
+    gaps = [i.message for i in validate_structure(doc) if i.code == "ARTICLE_NUMBER_GAP"]
+    assert gaps == ["제2-2조가 없습니다."]
+
+
+def test_volume_reference_tuple():
+    (r,) = extract_references("제2-14조(해약환급금) 제1항에 따른")
+    assert (r.volume, r.article, r.sub, r.paragraph, r.article_label) == (
+        2,
+        14,
+        None,
+        1,
+        "제2-14조",
+    )
 
 
 # ---------------------------------------------------------------- 조항 인용
@@ -255,6 +353,20 @@ def test_real_silson_2605_validation(silson_2605):
     assert found["EMPTY_ARTICLE"] == 0
     # 조 제목 괄호·다른 법령 인용을 잘못 읽어 생기던 오류 38건이 없어야 함
     assert found["BROKEN_REFERENCE"] == 0
+
+
+def test_real_volume_numbered_riders():
+    # 인터넷비갱신암보험: 공통 일반사항(제1-N조)과 특약 4개(제2-N조)가 편-조 번호
+    doc = _real("삼성생명_인터넷비갱신암보험_2601")
+    titles = [p.title for p in doc.parts]
+    assert "[특약 약관] 제1편 일반사항" in titles
+    found = codes(validate_structure(doc))
+    assert found["PART_WITHOUT_ARTICLES"] == 0
+    assert found["BROKEN_REFERENCE"] == 0
+    for title in ("고액치료비암진단특약", "소액질병보장특약", "암사망특약", "재진단암보장특약"):
+        i = next(i for i, t in enumerate(titles) if t.startswith(title))
+        arts = [a for a in doc.articles if a.part == i]
+        assert len(arts) >= 20 and all(a.volume == 2 for a in arts), title
 
 
 def test_real_small_rider_unchanged():

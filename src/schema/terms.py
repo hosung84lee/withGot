@@ -31,18 +31,25 @@ class Heading(BaseModel):
         return f"제{self.number}{self.kind} {self.title}".strip()
 
 
+def article_label(number: int, sub: int | None = None, volume: int | None = None) -> str:
+    """'제12조', '제12조의2', 편-조 번호면 '제2-14조', '제2-1조의3'."""
+    base = f"제{volume}-{number}조" if volume is not None else f"제{number}조"
+    return base + (f"의{sub}" if sub else "")
+
+
 class ArticleRef(BaseModel):
-    """본문 안의 다른 조항 인용 (예: '제12조제2항제3호')."""
+    """본문 안의 다른 조항 인용 (예: '제12조제2항제3호', '제2-14조')."""
 
     text: str  # 원문 그대로
     article: int
     sub: int | None = None  # 제12조의2 → 2
     paragraph: int | None = None
     item: int | None = None
+    volume: int | None = None  # 편-조 번호의 편 ('제2-14조' → 2)
 
     @property
     def article_label(self) -> str:
-        return f"제{self.article}조" + (f"의{self.sub}" if self.sub else "")
+        return article_label(self.article, self.sub, self.volume)
 
 
 class Item(BaseModel):
@@ -65,6 +72,7 @@ class Paragraph(BaseModel):
 class Article(BaseModel):
     number: int
     sub: int | None = None  # 제12조의2
+    volume: int | None = None  # 편-조 번호의 편 ('제2-14조' → 2). 조 번호는 편마다 1부터
     title: str | None = None
     deleted: bool = False  # '삭제' 표시된 조
     paragraphs: list[Paragraph] = Field(default_factory=list)
@@ -76,7 +84,7 @@ class Article(BaseModel):
 
     @property
     def label(self) -> str:
-        base = f"제{self.number}조" + (f"의{self.sub}" if self.sub else "")
+        base = article_label(self.number, self.sub, self.volume)
         return f"부칙 {base}" if self.addendum else base
 
     def full_text(self) -> str:

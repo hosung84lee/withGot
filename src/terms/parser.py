@@ -55,7 +55,10 @@ def circled_value(ch: str) -> int | None:
     return None
 
 
-_ARTICLE = re.compile(r"^제\s*(\d+)\s*조(?:\s*의\s*(\d+))?\s*(.*)$")
+# '제12조', '제12조의2', 편-조 번호 '제2-14조', '제2-1조의3'
+_ARTICLE = re.compile(
+    r"^제\s*(?:(?P<vol>\d+)\s*-\s*)?(?P<num>\d+)\s*조(?:\s*의\s*(?P<sub>\d+))?\s*(?P<rest>.*)$"
+)
 _HEADING = re.compile(r"^제\s*(\d+)\s*(편|장|절|관)(?:\s+(.*))?$")
 _ADDENDUM = re.compile(r"^부\s*칙\s*(?:[<〈(\[［【].*)?$")
 _APPENDIX = re.compile(r"^([\[【〔<［(])?\s*(별\s*표|별\s*지)\s*(\d*)\s*([\]】〕>］)])?(.*)$")
@@ -75,7 +78,7 @@ _INLINE_AFTER_TITLE = re.compile(
 # 조 번호 뒤의 조 제목 괄호 ('제8조(보험금의 지급절차) 제4항'). 괄호 한 겹까지 중첩 허용
 _REF_TITLE = r"[(（](?:[^()（）]|[(（][^()（）]*[)）]){1,60}[)）]"
 _REF = re.compile(
-    r"제\s*(\d+)\s*조(?:\s*의\s*(\d+))?"
+    r"제\s*(?:(\d+)\s*-\s*)?(\d+)\s*조(?:\s*의\s*(\d+))?"
     rf"(?:\s*{_REF_TITLE})?"
     r"(?:\s*제\s*(\d+)\s*항)?(?:\s*제\s*(\d+)\s*호)?"
 )
@@ -101,6 +104,8 @@ _PART_TITLE = re.compile(r"^\S.{1,80}\s?약관$")
 _PARENS = re.compile(r"\([^()]*\)")
 _PART_NOISE = re.compile(r"[,“”\"'‘’]|에서|할 때")
 _PART_NEXT = re.compile(r"^(※|제\s*1\s*(관|장|편|조))")
+# 여러 특약이 함께 쓰는 일반사항: '[특약 약관] 제1편 일반사항'
+_PART_BRACKET = re.compile(r"^\[(?:주계약|특약)\s*약관\]\s*(제\s*\d+\s*편\s*\S.{0,30})$")
 # 표지·목차의 분류 이름. 약관 제목으로 보지 않음
 _PART_GENERIC = {"약관", "보험약관", "주계약약관", "특약약관", "제도성특약약관"}
 # 부록 (약관에서 인용된 법령 등): 법령 조문이 이어지므로 구조화하지 않고 원문 보관
@@ -116,12 +121,15 @@ def _split_title(rest: str) -> tuple[str | None, str]:
     return None, rest
 
 
-def _parse_article_header(line: str) -> tuple[int, int | None, str | None, str, bool] | None:
-    """조 시작 줄이면 (번호, 의N, 제목, 나머지 본문, 삭제여부). 본문 속 인용이면 None."""
+def _parse_article_header(
+    line: str,
+) -> tuple[int, int | None, str | None, str, bool, int | None] | None:
+    """조 시작 줄이면 (번호, 의N, 제목, 나머지 본문, 삭제여부, 편). 본문 속 인용이면 None."""
     m = _ARTICLE.match(line)
     if not m:
         return None
-    number, sub, rest = int(m.group(1)), m.group(2), m.group(3).strip()
+    number, sub, rest = int(m.group("num")), m.group("sub"), m.group("rest").strip()
+    volume = int(m.group("vol")) if m.group("vol") else None
     title, body = _split_title(rest)
     if title is not None and _INLINE_AFTER_TITLE.match(body):
         return None  # 줄 맨 앞에 온 '제N조(제목)에 따라' 같은 인용
@@ -141,7 +149,7 @@ def _parse_article_header(line: str) -> tuple[int, int | None, str | None, str, 
     deleted = title == "삭제" or body.startswith("삭제")
     if title == "삭제":
         title = None
-    return number, int(sub) if sub else None, title, body, deleted
+    return number, int(sub) if sub else None, title, body, deleted, volume
 
 
 def _parse_appendix_header(line: str) -> str | None:
@@ -213,12 +221,20 @@ class _Builder:
         self._reset_items()
 
     def start_article(
-        self, number: int, sub: int | None, title: str | None, body: str, deleted: bool, line: int
+        self,
+        number: int,
+        sub: int | None,
+        title: str | None,
+        body: str,
+        deleted: bool,
+        volume: int | None,
+        line: int,
     ) -> None:
         self._close_addendum_text()
         self.article = Article(
             number=number,
             sub=sub,
+            volume=volume,
             title=title,
             deleted=deleted,
             path=[] if self.addendum else [h.label for h in self.stack],
@@ -406,6 +422,11 @@ def _drop_empty_parts(doc: TermsDocument) -> None:
 def _part_title(lines: list[str], i: int) -> str | None:
     """약관 제목 줄이면 제목. 앞 줄이 쪽 번호(새 페이지)이거나 다음 줄이 ※ 안내·제1관·제1조여야 함."""
     line = lines[i]
+    prev = next((ln for ln in reversed(lines[max(0, i - 4) : i]) if ln), "")
+    nxt = next((ln for ln in lines[i + 1 : i + 5] if ln), "")
+    context = bool(prev and _PAGE_NO.match(prev)) or bool(_PART_NEXT.match(nxt))
+    if _PART_BRACKET.match(line):  # '[특약 약관] 제1편 일반사항'
+        return line if context else None
     if not _PART_TITLE.match(line) or len(line) > 90:
         return None
     if _TITLE_NOISE.sub("", line) in _PART_GENERIC:
@@ -416,11 +437,7 @@ def _part_title(lines: list[str], i: int) -> str | None:
         return None
     if _ARTICLE.match(line) or _HEADING.match(line) or _APPENDIX.match(line):
         return None
-    prev = next((ln for ln in reversed(lines[max(0, i - 4) : i]) if ln), "")
-    nxt = next((ln for ln in lines[i + 1 : i + 5] if ln), "")
-    if (prev and _PAGE_NO.match(prev)) or _PART_NEXT.match(nxt):
-        return line
-    return None
+    return line if context else None
 
 
 def normalize(text: str) -> list[str]:
@@ -438,7 +455,7 @@ def _join_split_title(lines: list[str], i: int) -> tuple[str, int]:
     m = _ARTICLE.match(line)
     if not m:
         return line, 0
-    rest = m.group(3).strip()
+    rest = m.group("rest").strip()
     if not rest or rest[0] not in _OPEN or _OPEN[rest[0]] in rest:
         return line, 0
     for k in (1, 2):
@@ -456,7 +473,7 @@ def _join_split_title(lines: list[str], i: int) -> tuple[str, int]:
 def _is_toc_entry(line: str) -> bool:
     """제목 뒤에 쪽 번호만 붙은 목차 줄인지."""
     if (h := _parse_article_header(line)) is not None:
-        _, _, title, body, _ = h
+        _, _, title, body, _, _ = h
         return title is not None and bool(_TOC_PAGE.match(body))
     m = _APPENDIX.match(line)
     if m and m.group(1) and m.group(4) and _parse_appendix_header(line) is not None:
@@ -481,7 +498,7 @@ def _resumes_body(line: str) -> bool:
     if (h := _heading_match(line)) is not None and h[0] in ("편", "장", "관"):
         return True
     m = _ARTICLE.match(line)
-    rest = m.group(3).strip() if m else ""
+    rest = m.group("rest").strip() if m else ""
     return bool(rest) and rest[0] in _OPEN and _parse_article_header(line) is not None
 
 
@@ -555,15 +572,16 @@ def extract_references(text: str) -> list[ArticleRef]:
     events.sort(key=lambda e: e[0])
 
     refs: list[ArticleRef] = []
-    # 직전 인용: (끝 위치, 다른 법령인지, 조 번호, 의N). 조 번호 0 은 '같은 조'
-    last: tuple[int, bool, int, int | None] | None = None
+    # 직전 인용: (끝 위치, 다른 법령인지, 조 번호, 의N, 편). 조 번호 0 은 '같은 조'
+    last: tuple[int, bool, int, int | None, int | None] | None = None
     for start, m, is_article in events:
         chained = last is not None and bool(_REF_CONNECT.match(text[last[0] : start]))
         if is_article:
-            art, sub, para, item = m.groups()
+            vol, art, sub, para, item = m.groups()
+            volume = int(vol) if vol else None
             before = text[max(0, start - _REF_LOOKBACK) : start].replace("\n", " ")
             external = bool(_EXTERNAL_BEFORE.search(before)) or (chained and last[1])
-            last = (m.end(), external, int(art), int(sub) if sub else None)
+            last = (m.end(), external, int(art), int(sub) if sub else None, volume)
             if external:
                 continue
             refs.append(
@@ -573,17 +591,24 @@ def extract_references(text: str) -> list[ArticleRef]:
                     sub=int(sub) if sub else None,
                     paragraph=int(para) if para else None,
                     item=int(item) if item else None,
+                    volume=volume,
                 )
             )
             continue
         # 조 없이 항만 쓴 인용
         if chained:
-            _, external, art, sub = last
+            _, external, art, sub, volume = last
         else:
-            external, art, sub = False, 0, None
-        last = (m.end(), external, art, sub)
+            external, art, sub, volume = False, 0, None, None
+        last = (m.end(), external, art, sub, volume)
         if not external:
             refs.append(
-                ArticleRef(text=m.group(0), article=art, sub=sub, paragraph=int(m.group(1)))
+                ArticleRef(
+                    text=m.group(0),
+                    article=art,
+                    sub=sub,
+                    paragraph=int(m.group(1)),
+                    volume=volume,
+                )
             )
     return refs
