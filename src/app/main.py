@@ -18,6 +18,7 @@ _bootstrap()
 
 pages = [
     st.Page("views/home.py", title="Home", icon="🏠", default=True),
+    st.Page("views/terms_page.py", title="약관 분석", icon="📜"),
     st.Page("views/workflow_page.py", title="Workflow", icon="⚙️"),
     st.Page("views/agent_page.py", title="Agent", icon="🤖"),
     st.Page("views/trace_page.py", title="Trace", icon="🔍"),

@@ -12,6 +12,7 @@ dependencies = [
     "mcp>=2.0",
     "anthropic>=2.6.0",
     "openai>=3.46.0",
+    "pypdf>=7.0.0",
 ]
 
 [dependency-groups]
@@ -30,6 +31,7 @@ packages = [
     "src/agent",
     "src/mcp_server",
     "src/skills",
+    "src/terms",
 ]
 
 [tool.ruff]

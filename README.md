@@ -15,7 +15,7 @@ MCP 서버: `uv run python -m mcp_server.server`
 ## 폴더 구조
 
 ```
-docs/             # 문서 (agent.md, tracing.md)
+docs/             # 문서 (agent.md, tracing.md, terms.md)
 tests/            # pytest
 src/
 ├── app/          # Streamlit UI (main.py + views/)
@@ -25,10 +25,25 @@ src/
 ├── agent/        # Agent 루프 + providers/ (anthropic, openai)
 ├── mcp_server/   # MCP 서버
 ├── skills/       # Agent 도구 (@tool 로 등록)
+├── terms/        # 약관 구조화 · 검증 · AI 분석
 └── data/
     ├── pdf/
     ├── image/
     └── db/       # SQLite
+```
+
+## 약관 분석
+
+앱의 **약관 분석** 화면에서 약관(PDF/TXT/붙여넣기)을 조·항·호·목으로 구조화하고, 구조를 검증한 뒤
+AI 로 조항별 위험(약관규제법 기준)을 검토합니다. AI 분석 결과가 원문에 근거하는지도 다시 검증합니다.
+자세한 내용: [docs/terms.md](docs/terms.md)
+
+```python
+from terms import parse_terms, validate_structure, run_terms_pipeline
+
+doc = parse_terms(text)
+issues = validate_structure(doc)
+report = run_terms_pipeline(text, provider="anthropic")
 ```
 
 ## Agent
