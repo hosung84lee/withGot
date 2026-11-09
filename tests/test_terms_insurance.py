@@ -393,6 +393,27 @@ def test_term_box_numbers_do_not_break_outer_items():
     assert codes(validate_structure(parse_terms(TERM_BOX)))["PARAGRAPH_NUMBER_GAP"] == 0
 
 
+def test_footnote_numbers_are_not_items():
+    # 중증간병연금전환특약 제2조 모양: 표 아래 각주 '㈜ 1. … 2. … 3.' 와 용어 해설 상자 뒤 각주 '4.'
+    doc = parse_terms(
+        "제2조 [보험금의 지급사유]\n"
+        "회사는 피보험자에게 다음 각 호 중 어느 하나의 사유가 발생한 경우 연금을 지급합니다.\n"
+        "1. 생존연금\n"
+        "지급금액 이 특약의 보험료로 계산한 연금연액\n"
+        "㈜ 1. 보증지급횟수란 최소보증지급횟수부터 최대보증지급횟수까지 중 선택한 횟수를 말합니다.\n"
+        "2. 최소보증지급횟수 중 기대여명이란 통계표에 따른 기대여명 연수를 말합니다.\n"
+        "3. 연금연액은 매월, 매3개월, 매6개월로 나누어 지급받을 수 있습니다.\n"
+        "용어\n해설\n<산출방법서>\n보험료 및 해약환급금 산출방법서를 말합니다.\n"
+        "4. 연계약해당일이란 계약일부터 1년마다 돌아오는 매년의 계약해당일을 말합니다.\n"
+        "2. 중증간병연금\n"
+        "지급사유 피보험자가 최초의 중증장기요양상태로 판정받은 경우"
+    )
+    items = doc.articles[0].paragraphs[0].items
+    assert [i.label for i in items] == ["1", "2"]
+    assert "보증지급횟수란" in items[0].text and "연계약해당일이란" in items[0].text
+    assert codes(validate_structure(doc))["ITEM_NUMBER_GAP"] == 0
+
+
 def test_box_ends_at_next_article():
     doc = parse_terms(
         "제1조 [목적]\n① 본문\n설명 <예시>\n1. 상자 안\n제2조 [정의]\n1. 첫째\n2. 둘째"
@@ -454,6 +475,17 @@ def ref_tuples(text):
 )
 def test_reference_after_title_and_ranges(text, expected):
     assert ref_tuples(text) == expected
+
+
+def test_reference_title_with_injected_box():
+    # 암치료플러스종신보험: PDF 옆 설명 상자가 조 제목 괄호 중간에 끼어 괄호가 길어진 경우
+    text = (
+        "증액서비스 기간 중 계약자가 제20조(계약내용의 변\n"
+        "설명 <해당 연도의 계약해당일이 없는 경우 예시>\n"
+        "계약일이 2020년 2월 29일인 경우 차년도 연계약해당일은 2021년 2월 28일입니다.\n"
+        "경 등) 제3항에 따라 보험가입금액을 감액한 경우"
+    )
+    assert ref_tuples(text) == [(20, None, 3, None)]
 
 
 @pytest.mark.parametrize(
@@ -573,4 +605,8 @@ def test_real_small_rider_unchanged():
     # 제18조 뒤의 '별표 보험금을 지급할 때의 적립 이율 계산' 이 별표로 분리되며 그 안의 인용 1건이 빠짐
     assert sum(len(a.references) for a in doc.articles) == 44
     assert any(x.label.startswith("별표 보험금을 지급할 때") for x in doc.appendices)
-    assert codes(validate_structure(doc))["BROKEN_REFERENCE"] == 0
+    found = codes(validate_structure(doc))
+    assert found["BROKEN_REFERENCE"] == 0
+    # 제2조 표 아래 각주 '㈜ 1. … 4.' 를 호로 읽던 경고가 없어야 함
+    assert found["ITEM_NUMBER_GAP"] + found["PARAGRAPH_NUMBER_GAP"] == 0
+    assert [i.label for i in doc.find("제2조").paragraphs[0].items] == ["1", "2"]

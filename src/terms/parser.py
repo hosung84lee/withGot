@@ -75,8 +75,10 @@ _INLINE_AFTER_TITLE = re.compile(
     r"^(에|의|및|와|과|를|을|로|으로|부터|까지|에서|[,、]|제\s*\d+\s*(항|호))"
 )
 
-# 조 번호 뒤의 조 제목 괄호 ('제8조(보험금의 지급절차) 제4항'). 괄호 한 겹까지 중첩 허용
-_REF_TITLE = r"[(（](?:[^()（）]|[(（][^()（）]*[)）]){1,60}[)）]"
+# 조 번호 뒤의 조 제목 괄호 ('제8조(보험금의 지급절차) 제4항'). 괄호 한 겹까지 중첩 허용.
+# PDF 에서 옆 상자 내용이 제목 중간에 끼는 경우('제20조(계약내용의 변 / 설명 <예시> … / 경 등)')가
+# 있어 길이를 넉넉히 둠
+_REF_TITLE = r"[(（](?:[^()（）]|[(（][^()（）]*[)）]){1,200}[)）]"
 _REF = re.compile(
     r"(?:《\s*([^》]{1,30}?)\s*》\s*)?"  # 보장종목 ('《상해비급여형》 제3조')
     r"제\s*(?:(\d+)\s*-\s*)?(\d+)\s*조(?:\s*의\s*(\d+))?"
@@ -116,6 +118,8 @@ _BOX_START = re.compile(
 )
 # 상자 안의 소제목 '<직업>', '<소득세법 제59조의4(특별세액공제)>'. 상자 안 번호를 처음부터 다시 셈
 _BOX_SUBTITLE = re.compile(r"^<.*>$")
+# 표 아래 각주 '㈜ 1. 보증지급횟수란 …' / '2. …': 각주 번호는 호가 아님 (상자처럼 처리)
+_FOOTNOTE = re.compile(r"^(?:㈜|\(주\)|주\))\s*(?:(\d{1,2})\.)?")
 _MOK_LETTERS = "가나다라마바사아자차카타파하"
 # 여러 특약이 함께 쓰는 일반사항: '[특약 약관] 제1편 일반사항'
 _PART_BRACKET = re.compile(r"^\[(?:주계약|특약)\s*약관\]\s*(제\s*\d+\s*편\s*\S.{0,30})$")
@@ -382,6 +386,13 @@ class _Builder:
         self.box_pending = text == "용어"
         if starts_box:
             self.box = {"항": 0, "호": 0, "목": 0}
+        elif m := _FOOTNOTE.match(text):
+            # 각주 첫 줄의 번호부터 셈: '㈜ 1.' 다음의 '2.' 는 각주 2번
+            self.box = {"항": 0, "호": int(m.group(1) or 0), "목": 0}
+            if self.last is None:
+                self.last = self._ensure_paragraph()
+            self._append(text)
+            return
         if self.box is not None and self._box_line(text):
             return
 
