@@ -9,10 +9,11 @@ class StepResult(BaseModel):
     status: Literal["success", "failed"] = "success"
     duration_sec: float
     output: str
+    trace_id: str | None = None
 
 
 class WorkflowResult(BaseModel):
-    workflow_id: str  # = trace_id (Trace 화면에서 이 ID 로 조회)
+    workflow_id: str  # Trace 화면에서 이 ID 로 조회 (단계마다 trace 가 따로 있음)
     input_text: str
     steps: list[StepResult]
     summary: str

@@ -1,9 +1,10 @@
 """실행 추적 화면. 결과가 이상할 때 어디서 무엇이 잘못됐는지 찾는 용도.
 
 위에서 아래로 읽으면 되게 구성:
-  1. 목록: 문제 있는 실행(🔴/🟡)을 찾음
-  2. 요약: 에러가 처음 난 지점과 traceback 을 맨 위에 표시
-  3. 타임라인: 단계별 입력/출력/요청 원문. 에러 단계는 자동으로 펼쳐짐
+  1. 워크플로우 목록: 문제 있는 실행(🔴/🟡)을 찾음 (workflow_id = 이름-시각-난수)
+  2. trace 목록: 그 워크플로우 안의 호출들 (채팅 메시지, 워크플로우 단계 등)
+  3. 요약: 에러가 처음 난 지점과 traceback 을 맨 위에 표시
+  4. 타임라인: 단계별 입력/출력/요청 원문. 에러 단계는 자동으로 펼쳐짐
 """
 
 import json
@@ -11,7 +12,15 @@ from datetime import datetime
 
 import streamlit as st
 
-from backend.tracing import delete_all_traces, get_trace, list_traces
+from backend.tracing import (
+    delete_all_traces,
+    get_trace,
+    get_workflow,
+    get_workflow_summary,
+    list_traces,
+    list_workflow_names,
+    search_workflows,
+)
 from schema.trace import SpanRecord
 
 STATUS_ICON = {"ok": "🟢", "warning": "🟡", "error": "🔴", "running": "⏳", "cancelled": "⚪"}
@@ -53,16 +62,32 @@ def show_value(label: str, v) -> None:
         st.json(v, expanded=2)
 
 
-# ------------------------------------------------------------------ 목록
+def pick(event, items, param: str, attr: str, default=None):  # trace 목록 선택용
+    """표에서 고른 행 > URL 파라미터 > 기본값 순으로 선택. 고른 값은 URL 에 남겨 공유 가능."""
+    ids = [getattr(x, attr) for x in items]
+    if event.selection.rows:
+        chosen = ids[event.selection.rows[0]]
+    elif st.query_params.get(param) in ids:
+        chosen = st.query_params[param]
+    else:
+        chosen = default
+    if chosen:
+        st.query_params[param] = chosen
+    return chosen
+
+
+# ------------------------------------------------------------------ 1. 워크플로우 목록
+
+STATUS_FILTERS: dict[str, list | None] = {
+    "전체": None,
+    "🔴 에러": ["error"],
+    "🟡 경고": ["warning"],
+    "⏳ 실행 중·중단": ["running", "cancelled"],
+}
 
 st.title("Trace")
 
 with st.sidebar:
-    status_filter = st.segmented_control(
-        "상태", ["전체", "🔴 에러", "🟡 경고"], default="전체", key="trace_status"
-    )
-    search = st.text_input("검색 (이름, 입력, 에러 메시지)")
-    limit = st.number_input("최근 N개", 10, 1000, 100, step=50)
     st.button("새로고침", width="stretch")
     with st.expander("관리"):
         if st.button("trace 전체 삭제", type="secondary"):
@@ -70,58 +95,158 @@ with st.sidebar:
             st.query_params.clear()
             st.rerun()
 
-traces = list_traces(int(limit))
-if status_filter == "🔴 에러":
-    traces = [t for t in traces if t.worst_status == "error"]
-elif status_filter == "🟡 경고":
-    traces = [t for t in traces if t.worst_status == "warning"]
-if search:
-    q = search.lower()
-    traces = [
-        t
-        for t in traces
-        if q in t.name.lower()
-        or q in t.input_preview.lower()
-        or q in (t.error_message or "").lower()
-    ]
+# trace_id 만 넘어온 경우 (예전 링크) → 소속 워크플로우를 찾아서 선택
+if st.query_params.get("trace_id") and not st.query_params.get("workflow_id"):
+    found = get_trace(st.query_params["trace_id"])
+    if found and found[0].workflow_id:
+        st.query_params["workflow_id"] = found[0].workflow_id
 
-if not traces:
+st.subheader("워크플로우")
+c_query, c_name, c_size = st.columns([3, 1.4, 1])
+query = c_query.text_input(
+    "검색",
+    placeholder="workflow ID, 이름, 입력, 채팅 메시지, 에러 메시지",
+    key="wf_query",
+)
+name = c_name.selectbox("종류", ["전체", *list_workflow_names()], key="wf_name")
+page_size = c_size.selectbox("페이지당", [10, 20, 50, 100], index=1, key="wf_page_size")
+status_label = st.segmented_control("상태", list(STATUS_FILTERS), default="전체", key="wf_status")
+
+# 검색 조건이 바뀌면 1페이지로
+filters = (query, name, page_size, status_label)
+if st.session_state.get("wf_filters") != filters:
+    st.session_state.wf_filters = filters
+    st.session_state.wf_page = 1
+
+result = search_workflows(
+    query=query,
+    statuses=STATUS_FILTERS.get(status_label or "전체"),
+    name=None if name == "전체" else name,
+    page=st.session_state.get("wf_page", 1),
+    page_size=page_size,
+)
+st.session_state.wf_page = result.page  # 범위를 넘으면 마지막 페이지로 맞춰진 값
+workflows = result.items
+
+wf_event = None
+if workflows:
+    wf_event = st.dataframe(
+        [
+            {
+                "상태": STATUS_ICON[w.worst_status],
+                "시작": fmt_time(w.started_at),
+                "workflow_id": w.id,
+                "trace": w.traces,
+                "LLM": w.llm_calls,
+                "도구": w.tool_calls,
+                "에러": w.errors,
+                "토큰 (in/out)": f"{w.input_tokens:,} / {w.output_tokens:,}",
+                "입력": w.input_preview,
+            }
+            for w in workflows
+        ],
+        hide_index=True,
+        width="stretch",
+        on_select="rerun",
+        selection_mode="single-row",
+        # 페이지나 검색 조건이 바뀌면 표 선택 초기화 (선택한 워크플로우는 URL 에 남아 있음)
+        key=f"workflow_table_{hash(filters)}_{result.page}",
+    )
+elif query or name != "전체" or status_label not in (None, "전체"):
+    st.info("조건에 맞는 워크플로우가 없습니다.")
+else:
     st.info("기록된 실행이 없습니다. Agent 나 Workflow 화면에서 실행하면 여기에 쌓입니다.")
+
+
+def go(delta: int) -> None:
+    st.session_state.wf_page += delta
+
+
+first = (result.page - 1) * result.page_size + 1 if result.total else 0
+last = min(result.page * result.page_size, result.total)
+c_prev, c_page, c_next, c_info = st.columns([1, 1.2, 1, 3], vertical_alignment="bottom")
+c_prev.button("◀ 이전", on_click=go, args=(-1,), disabled=result.page <= 1, width="stretch")
+c_page.number_input(
+    f"페이지 (/ {result.pages})", 1, result.pages, key="wf_page", label_visibility="collapsed"
+)
+c_next.button(
+    "다음 ▶", on_click=go, args=(1,), disabled=result.page >= result.pages, width="stretch"
+)
+c_info.caption(
+    f"{first}–{last} / 총 {result.total:,}개 · {result.page} / {result.pages} 페이지"
+    if result.total
+    else "총 0개"
+)
+
+# 표에서 고른 행 > URL 의 workflow_id (다른 페이지에 있어도 유지)
+if wf_event and wf_event.selection.rows:
+    wf_id = workflows[wf_event.selection.rows[0]].id
+    st.query_params["workflow_id"] = wf_id
+    st.query_params.pop("trace_id", None)
+else:
+    wf_id = st.query_params.get("workflow_id")
+
+wf = get_workflow(wf_id) if wf_id else None
+if not wf:
+    if wf_id:
+        st.warning(f"워크플로우 `{wf_id}` 를 찾을 수 없습니다.")
+    elif workflows:
+        st.caption("목록에서 워크플로우를 하나 선택하세요.")
     st.stop()
 
-event = st.dataframe(
+# ------------------------------------------------------------------ 2. trace 목록
+
+wf_summary = next((w for w in workflows if w.id == wf_id), None) or get_workflow_summary(wf_id)
+traces = list_traces(wf_id, limit=1000)
+
+st.divider()
+st.subheader(f"{STATUS_ICON[wf_summary.worst_status]} {wf_id}")
+st.caption(
+    f"이름 {wf.name} · 시작 {wf.started_at} · 마지막 {wf.ended_at or '-'} · "
+    f"{STATUS_LABEL[wf_summary.worst_status]}"
+)
+if wf.error_type:  # trace 밖(워크플로우 코드)에서 난 에러
+    with st.container(border=True):
+        st.error(f"**워크플로우 에러**: {wf.error_type}: {wf.error_message}")
+        if wf.attributes.get("error_origin"):
+            st.caption(f"하위 단계에서 발생: {wf.attributes['error_origin']}")
+        if wf.traceback:
+            st.code(wf.traceback, language="python")
+if wf.output is not None:
+    with st.expander("워크플로우 최종 출력"):
+        show_value("output", wf.output)
+
+if not traces:
+    st.info("이 워크플로우에는 아직 기록된 호출(trace)이 없습니다.")
+    st.stop()
+
+st.markdown(f"**호출 (trace) {len(traces)}개**")
+tr_event = st.dataframe(
     [
         {
+            "#": i,
             "상태": STATUS_ICON[t.worst_status],
             "시작": fmt_time(t.started_at),
+            "trace_id": t.trace_id,
             "종류": KIND_ICON[t.kind],
             "이름": t.name,
             "소요": fmt_ms(t.duration_ms),
             "LLM": t.llm_calls,
             "도구": t.tool_calls,
-            "에러": t.errors,
             "토큰 (in/out)": f"{t.input_tokens:,} / {t.output_tokens:,}",
             "입력": t.input_preview,
         }
-        for t in traces
+        for i, t in enumerate(traces, 1)
     ],
     hide_index=True,
     width="stretch",
     on_select="rerun",
     selection_mode="single-row",
-    key="trace_table",
+    key=f"trace_table_{wf_id}",  # 워크플로우가 바뀌면 선택 초기화
 )
-
-rows = event.selection.rows
-if rows:
-    selected_id = traces[rows[0]].trace_id
-    st.query_params["trace_id"] = selected_id  # URL 로 공유 가능
-else:
-    selected_id = st.query_params.get("trace_id")
-
-if not selected_id:
-    st.caption("목록에서 실행을 하나 선택하세요.")
-    st.stop()
+# 기본 선택: 처음 에러 난 호출, 없으면 마지막 호출
+first_error = next((t.trace_id for t in traces if t.worst_status == "error"), None)
+selected_id = pick(tr_event, traces, "trace_id", "trace_id", first_error or traces[-1].trace_id)
 
 spans = get_trace(selected_id)
 if not spans:
@@ -160,7 +285,10 @@ worst = next(
 )
 st.divider()
 st.subheader(f"{STATUS_ICON[worst]} {KIND_ICON[root.kind]} {root.name}")
-st.caption(f"trace_id `{root.trace_id}` · 시작 {root.started_at} · {STATUS_LABEL[worst]}")
+st.caption(
+    f"trace_id `{root.trace_id}` · workflow_id `{root.workflow_id}` · "
+    f"시작 {root.started_at} · {STATUS_LABEL[worst]}"
+)
 
 llm_spans = [s for s in spans if s.kind == "llm"]
 tool_spans = [s for s in spans if s.kind == "tool"]
@@ -202,7 +330,7 @@ if root.output is not None and root.kind in ("agent", "workflow"):
 st.download_button(
     "trace JSON 내려받기",
     data=json.dumps([s.model_dump() for s in spans], ensure_ascii=False, indent=2),
-    file_name=f"trace_{root.trace_id}.json",
+    file_name=f"{root.workflow_id}_{root.trace_id}.json",
     mime="application/json",
 )
 
@@ -249,9 +377,6 @@ for s in spans:
             out = s.output or {}
             t_resp, t_req, t_meta = st.tabs(["응답", "보낸 요청 (원문)", "속성"])
             with t_resp:
-                if out.get("thinking"):
-                    st.caption("추론 요약 (왜 이렇게 응답했는지)")
-                    st.info(out["thinking"])
                 show_value("text", out.get("text"))
                 if out.get("tool_calls"):
                     show_value("tool_calls", out["tool_calls"])

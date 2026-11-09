@@ -29,15 +29,15 @@ if submitted:
 result = st.session_state.get("workflow_result")
 if result:
     st.subheader("결과")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Workflow ID", result.workflow_id)
-    c2.metric("단계 수", len(result.steps))
-    c3.metric("총 소요(초)", result.total_sec)
+    st.caption(f"Workflow ID `{result.workflow_id}`")
+    c1, c2 = st.columns(2)
+    c1.metric("단계 수 (= trace 수)", len(result.steps))
+    c2.metric("총 소요(초)", result.total_sec)
     st.page_link(
         "views/trace_page.py",
         label="Trace 보기",
         icon="🔍",
-        query_params={"trace_id": result.workflow_id},
+        query_params={"workflow_id": result.workflow_id},
     )
 
     st.info(result.summary)

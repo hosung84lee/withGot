@@ -2,11 +2,8 @@
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from schema.agent import ProviderName
 
 SRC_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = SRC_DIR / "data"
@@ -22,21 +19,15 @@ class Settings(BaseSettings):
     image_dir: Path = DATA_DIR / "image"
     db_dir: Path = DATA_DIR / "db"
 
-    # --- Agent / LLM ---
-    default_provider: ProviderName = "anthropic"
+    # --- Agent / LLM (OpenAI) ---
     agent_max_turns: int = 10
     agent_max_tokens: int = 16000
 
-    # 키가 비어 있으면 각 SDK가 환경변수(ANTHROPIC_API_KEY 등)에서 직접 찾습니다.
-    anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-opus-5-5"
-    anthropic_effort: str = "medium"  # low | medium | high | xhigh | max
-    anthropic_fallbacks: bool = True  # 거절(refusal) 시 서버 측 대체 모델로 재시도
-    # summarized: 추론 요약을 응답에 포함 (trace 에서 확인용) | omitted: 빈 문자열
-    anthropic_thinking_display: Literal["summarized", "omitted"] = "summarized"
-
     openai_api_key: str | None = None
-    openai_model: str = "gpt-5.5"
+    openai_model: str = "gpt-6-luna"
+    # none | minimal | low | medium | high | xhigh | max (비우면 모델 기본값)
+    # gpt-6-luna 는 Chat Completions 에서 도구를 쓰려면 none 이어야 함. none 이 토큰도 가장 적게 씀
+    openai_reasoning_effort: str | None = "none"
 
     attachment_max_mb: int = 30  # 첨부 파일 1개 최대 크기
 

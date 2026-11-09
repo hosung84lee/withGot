@@ -4,15 +4,12 @@ from agent import Agent
 from backend.attachments import SUPPORTED_EXTENSIONS, attachment_from_document, media_type_of
 from backend.config import get_settings
 from backend.storage import list_documents, save_upload
+from backend.tracing import new_workflow_id, workflow
 from schema.agent import AgentMessage, Attachment
 from schema.document import DocumentKind
 
 TRACE_PAGE = "views/trace_page.py"
 settings = get_settings()
-DEFAULT_MODELS = {
-    "anthropic": settings.anthropic_model,
-    "openai": settings.openai_model,
-}
 
 
 def save_files(files) -> list[Attachment]:
@@ -34,14 +31,17 @@ def show_attachments(attachments: list[Attachment]) -> None:
 st.title("Agent")
 
 with st.sidebar:
-    provider = st.selectbox(
-        "Provider",
-        list(DEFAULT_MODELS),
-        index=list(DEFAULT_MODELS).index(settings.default_provider),
-    )
-    model = st.text_input("Model", value=DEFAULT_MODELS[provider], key=f"model_{provider}")
+    model = st.text_input("OpenAI 모델", value=settings.openai_model)
     if st.button("대화 초기화"):
         st.session_state.agent_history = []
+        st.session_state.chat_workflow_id = new_workflow_id("chat")
+
+    # 대화 1개 = workflow 1개 (chat-...), 메시지 1개 = trace 1개
+    chat_id = st.session_state.setdefault("chat_workflow_id", new_workflow_id("chat"))
+    st.caption(f"대화 ID `{chat_id}`")
+    st.page_link(
+        TRACE_PAGE, label="이 대화의 Trace", icon="🔍", query_params={"workflow_id": chat_id}
+    )
 
     st.divider()
     st.subheader("문서 보관함")
@@ -58,7 +58,6 @@ with st.sidebar:
     for d in list_documents()[:20]:
         st.caption(f"#{d.id} · {'📄' if d.kind == DocumentKind.PDF else '🖼️'} {d.filename}")
 
-# 대화 기록은 provider 가 바뀌어도 유지 (raw 블록은 같은 provider 일 때만 재사용됨)
 history: list[AgentMessage] = st.session_state.setdefault("agent_history", [])
 
 for m in history:
@@ -96,8 +95,9 @@ if submitted and (submitted.text or submitted.files):
 
             agent = None
             try:
-                agent = Agent(provider, model=model)
-                result = agent.run(history, on_event=on_event)
+                agent = Agent(model, name="chat")
+                with workflow("chat", workflow_id=chat_id):
+                    result = agent.run(history, on_event=on_event)
             except Exception as e:  # noqa: BLE001  API 키 누락, 네트워크 오류 등
                 status.update(label="실패", state="error")
                 history.pop()
@@ -107,7 +107,7 @@ if submitted and (submitted.text or submitted.files):
                         TRACE_PAGE,
                         label="Trace 에서 원인 보기",
                         icon="🔍",
-                        query_params={"trace_id": agent.last_trace_id},
+                        query_params={"workflow_id": chat_id, "trace_id": agent.last_trace_id},
                     )
                 st.stop()
             status.update(
@@ -123,7 +123,10 @@ if submitted and (submitted.text or submitted.files):
         elif result.stop_reason == "refusal" and not result.output:
             st.warning("모델이 요청을 거절했습니다.")
         st.page_link(
-            TRACE_PAGE, label="Trace 보기", icon="🔍", query_params={"trace_id": result.trace_id}
+            TRACE_PAGE,
+            label=f"Trace 보기 · {result.trace_id}",
+            icon="🔍",
+            query_params={"workflow_id": chat_id, "trace_id": result.trace_id},
         )
 
     st.session_state.agent_history = result.messages
