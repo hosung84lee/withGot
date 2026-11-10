@@ -1,7 +1,13 @@
 # 해커톤 준비 노트 (새 PC 에서 시작하기)
 
-2026-11-09~10 에 한 작업을 정리한 문서입니다. 새 PC 에서 이 문서를 보고 환경을 세팅하고,
+2026-11-09~11 에 한 작업을 정리한 문서입니다 (최종: 2026-11-11, main `d137655` 이후). 새 PC 에서 이 문서를 보고 환경을 세팅하고,
 [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 를 따라 새 저장소에 다시 구현할 수 있게 썼습니다.
+
+> **설계 변경 (11-11): 약관 분석의 목표 = 미리 정의한 보장 JSON 스키마를 약관에서 뽑아내기.**
+> 스키마는 [`src/schema/json/coverage.json`](../src/schema/json/coverage.json) (팀 초안 PR #5 를 샘플 약관 7개로 보완),
+> 분석·추가 이유·남은 결정은 [coverage_json_schema.md](coverage_json_schema.md), 예시는 `cov_sample.json`(초안 2건)·
+> `cov_samples_7policies.json`(7개 약관 12건). 구현 방법은 [REBUILD_GUIDE.md 21장](REBUILD_GUIDE.md).
+> 약관 구조화(M1~M5)는 그대로 쓰고, 그 위에서 사고보장 데이터(Product) 대신/함께 이 스키마로 뽑습니다.
 
 > **중요: 해커톤에서는 이 저장소 코드를 쓸 수 없고 새 저장소에 처음부터 다시 만들어야 합니다.**
 > 이 저장소는 참고용이고, 다시 만들 때는 [REBUILD_GUIDE.md](REBUILD_GUIDE.md)(설계·규칙·정답 수치·테스트 예시)를 따르세요.
@@ -18,7 +24,12 @@
 | PDF 텍스트 추출 | 동작 | `src/terms/extract.py` |
 | 약관 구조화 (약관·보장종목·관·조·항·호, 별표·부록) | **동작 · 실제 약관 7개로 검증** | `src/terms/parser.py` |
 | 구조 검증 (번호·인용) | **동작 · 7개 약관에서 원문 오류 1건만 남음** | `src/terms/validator.py` |
-| AI 조항 분석 (분류·요약·불공정 조항) | 코드 있음, 실제 LLM 미실행 | `src/terms/analyzer.py` |
+| AI 조항 분석 (분류·요약·불공정 조항) | 코드 있음 (병렬·부분 실패 허용), **화면에서는 뺌** (설계 변경) | `src/terms/analyzer.py` |
+| **보장 JSON 스키마** (coverage.json) + 7개 약관 예시 12건 | **동작 · 스키마 검증 통과** | `src/schema/json/`, `tools/schema_samples/build.py` |
+| **약관 → 스키마 AI 추출** (조문 + 지급기준표 별표 → JSON, jsonschema 재시도·부분 살리기·캐시) | 코드·테스트(가짜 LLM) 완료, **실제 LLM 미실행** (크레딧 없음) | `src/coverage_json/extract.py` |
+| 사고보장 데이터 → 스키마 변환, **두 약관 스키마 비교** | 동작 (API 없이) | `src/coverage_json/convert.py`, `compare.py` |
+| 앱: 약관 분석(파일 올리기 → 구조 뷰어·사고보장·테이블·JSON, 샘플 7개, **약관 비교 탭**) | 동작 | `src/app/views/terms_page.py`, `src/app/compare_view.py` |
+| 앱: **보장맵** (진료 서류 → 치료 항목·진단 → 약관 보장 → 근거 조항 그림, 실손 참고 계산) | 동작 · 실손 2605·인터넷암 2404 | `src/coverage_map/`, `src/app/views/coverage_map_page.py` |
 | 사고보장 스키마 (정액 + **실손**) | 동작 | `src/schema/coverage.py` |
 | 사고보장 추출: 묶음 → LLM → 근거 검증 → 정답 비교 | **코드·테스트 완료, 실제 LLM 미실행** | `src/coverage_extract/` |
 | 정액형 근거 검증 (별표) + 암진단 정답 초안 | 동작 · 인터넷암보험 근거 8/8 (초안, 확인 필요) | `src/coverage_extract/grounding.py`, `tests/fixtures/cancer_2404_diagnosis_draft.json` |
@@ -107,11 +118,14 @@ copy .env.example .env            # OPENAI_API_KEY 입력
 ```
 
 ```powershell
-# 빠른 테스트 (약 5초, 132개 통과 · 7개 건너뜀이 정상)
+# 빠른 테스트 (약 5초, 156개 통과 · 8개 건너뜀이 정상)
 uv run pytest
 
-# 실제 약관 PDF 테스트까지 (약 2분, 139개 통과가 정상)
+# 실제 약관 PDF 테스트까지 (약 4분, 전부 통과가 정상)
 uv run pytest --pdf
+
+# 7개 약관 스키마 예시 다시 만들고 검증
+uv run python tools/schema_samples/build.py
 
 # 사고보장 추출 묶음 보기 (API 키 없이)
 uv run python -m coverage_extract "insurance-workbench/data/reference/policies/삼성생명_급여실손의료비보장보험_2605갱신형_약관_2026-09-23.pdf" --dry-run
@@ -144,6 +158,8 @@ withGot 최상위 `pytest` 는 `tests/` 만 봅니다.
 
 **약관** — [REBUILD_GUIDE.md](REBUILD_GUIDE.md)
 
+0. **(설계 변경)** 최종 산출물은 보장 JSON 스키마(coverage.json) 목록. H0 에 [coverage_json_schema.md 3장](coverage_json_schema.md)의
+   열린 결정(보장 단위 묶기/나누기 등)을 셋이 정하고 스키마를 잠근 뒤, 아래 순서는 그대로 하되 M6 부터는 가이드 21장대로 스키마로 뽑습니다.
 1. **M1~M5 재구현** (API 키 없이). 마일스톤마다 가이드 16장 예시와 15장 수치로 확인. 정답은 가이드 13장·20장.
 2. **M6 첫 실제 추출** — 실손 2605 주계약 《질병급여형》 묶음 하나(약 7,700자) → 근거 검증 + 정답 비교(일치율). 1일차 저녁 통합 전에.
 3. **프롬프트 다듬기** — 비교의 `값이 다름`·`빠짐`, 근거 검증의 `NUMBER_NOT_FOUND` 를 보고 고침. 스키마에 없는 항목은 escalations 로.
@@ -165,6 +181,17 @@ withGot 최상위 `pytest` 는 `tests/` 만 봅니다.
 3. 1일차 저녁부터 mock 을 공개 함수(`run_policy`, `run_claim`) 호출로 교체. 발표 시연 흐름과 대본.
 
 ## 6. 한 작업 (커밋 순서)
+
+### 2026-11-11
+
+| 커밋 | 내용 |
+|---|---|
+| `d137655` | **보장 JSON 스키마 보완(샘플 약관 7개 분석)** + 7개 약관 예시 12건 + `src/coverage_json/`(검증·KCD 정규식·변환·AI 스키마 추출·비교) + 약관 분석 「약관 비교 (스키마)」 탭 + [coverage_json_schema.md](coverage_json_schema.md) |
+| `650f15d` | 보장맵: 진단서 질병코드 → 정액형 진단 보장(인터넷암 2404 정답 초안), 별표 근거 원문 |
+| `2fc4032` | (팀원 PR #5) 보장 JSON 스키마 초안 `coverage.json` + 예시 `cov_sample.json` |
+| `45a5d8c`·`589820e`·`a00b371` | 보장맵 보장종목 기본값·비급여 판정, 사고보장 추출 형식 오류 항목만 빼고 살리기, 보장맵에 실제 약관 PDF 연결·약관 분석을 사고보장 추출로 전환·큰 약관(200쪽+) 병렬 처리 |
+| `5e51ad8` | 약관 분석 화면(파일 올리기 첫 탭, 구조 뷰어) + 보장맵 첫 버전 |
+| `338ec2e` | 재구현 가이드: 리허설(M1~M2 새로 구현)·LLM 시험(일치율 82%) 결과 반영 |
 
 ### 2026-11-10
 
@@ -239,7 +266,8 @@ start tools/terms_viewer/out/terms-viewer.html     # 브라우저로 열기 (mac
 
 ## 9. 알려진 한계
 
-- 사고보장 추출은 **실제 LLM 으로 아직 돌려보지 않음** (테스트는 가짜 응답).
+- 사고보장 추출은 실손 2605 에서 6/8 묶음만 실제 LLM 으로 돌려 봄 (11-10). **스키마 직접 추출은 실제 LLM 미실행** (테스트는 가짜 응답). OpenAI 키는 크레딧이 있어야 함 (`429 no credits` 면 결제 페이지에서 충전).
+- 화면 테스트 PC(켜진 지 91일)에서 Windows 의 오래 켠 PC 문제(TIME_WAIT 가 안 사라져 포트 고갈)로 화면이 가끔 멈추거나 빈 화면이 됨 → **재부팅으로 해결**. 앱 문제 아님.
 - 암진단 정답은 **초안** (팀원 원문 대조 필요). 정액형 묶음은 아직 조만 넣어서 LLM 추출 전에 별표·정의 조 확장 필요.
 - 갭 분석이 제안한 스키마 확장 16종은 아직 반영 안 됨 (해커톤 H0 에서 넣을 것 고르기: 추천 합산 한도·1회 산정 규칙).
 - 옆 안내 상자는 끝 표시가 없어 번호로 끝을 판단합니다. 상자 안 다음 번호와 본문 다음 번호가 같으면(상자 ①② 뒤 본문 ③) 구분 못 함. 실제 약관 7개에서는 문제 없었음.

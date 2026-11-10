@@ -1,7 +1,7 @@
 # withGot 작업 안내 (Claude Code)
 
 - 먼저 읽을 문서: `docs/HACKATHON.md` (현재 상태, 환경 세팅, 다음 할 일)
-- 해커톤에서는 이 코드를 쓰지 않고 새 저장소에 다시 만듦: 재구현 명세는 `docs/REBUILD_GUIDE.md`,
+- 해커톤에서는 이 코드를 쓰지 않고 새 저장소에 다시 만듦: 재구현 명세는 `docs/REBUILD_GUIDE.md` (11-11 설계 변경: 약관 → 보장 JSON 스키마 `src/schema/json/coverage.json`, 21장·`docs/coverage_json_schema.md`),
   3명 분담·계약은 `docs/TEAM_INTERFACE.md`, 새 저장소용 규칙 템플릿은 `docs/hackathon_templates/`
 - 세부: `docs/terms.md` (약관 구조화·검증), `docs/coverage_extract.md` (사고보장 추출), `docs/coverage_schema.md` (스키마), `docs/coverage_tables.md` (테이블 저장)
 - 패키지 관리: `uv` (`uv sync`, `uv run …`). Python 3.12.
