@@ -19,6 +19,7 @@ from coverage_extract.extractor import SectionExtraction
 from coverage_extract.grounding import (
     GroundingReport,
     _part_index,
+    find_appendix,
     find_article,
     ground_product,
     squash,
@@ -33,7 +34,12 @@ from .linker import DEFAULT_PRODUCT, load_product
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_DIR = ROOT / "insurance-workbench" / "data" / "reference" / "policies"
 CACHE_DIR = DATA_DIR / "cache"
-GOLDEN = [DEFAULT_PRODUCT]  # 사람이 원문과 대조한 보장 데이터
+# 사람이 원문과 대조한 보장 데이터 (초안은 일부 보장만: 인터넷암 2404 진단보험금)
+GOLDEN = [DEFAULT_PRODUCT, DEFAULT_PRODUCT.parent / "cancer_2404_diagnosis_draft.json"]
+
+
+def is_draft(product: Product) -> bool:
+    return "2404" in product.name
 
 
 def file_hash(data: bytes) -> str:
@@ -186,6 +192,17 @@ def ground(product: Product, doc: TermsDocument) -> GroundingReport:
 
 def article_for(doc: TermsDocument, src: SourceRef) -> Article | None:
     return find_article(doc, src)
+
+
+def source_text(doc: TermsDocument, src: SourceRef) -> tuple[str, str] | None:
+    """근거의 (제목, 원문). 조 근거는 조 본문, 별표 근거(정액형 지급 금액 등)는 별표 원문."""
+    if src.article:
+        a = find_article(doc, src)
+        return (a.title or "", a.full_text()) if a else None
+    if src.appendix:
+        x = find_appendix(doc, src)
+        return (x.label, x.text) if x else None
+    return None
 
 
 def highlight(text: str, quote: str) -> str:

@@ -52,6 +52,15 @@ SAMPLES["종합병원 외래 + 약국"] = [
         ),
     )
 ]
+SAMPLES["암 진단서 (C50.9 유방암) — 인터넷암 2404 와 함께"] = [
+    (
+        "진단서.txt",
+        (
+            "진단서\nBOJANGIT SAMPLE V1 DIAGNOSIS\n사례번호 | DEMO-005\n"
+            "진단명 | 가상 유방의 악성신생물\n질병분류기호 | C50.9\n"
+        ),
+    )
+]
 SAMPLES["정신과 진단 (보상 제외)"] = SAMPLES["의원 외래 (급여 + 비급여)"] + [
     (
         "진단서.txt",
@@ -112,7 +121,11 @@ cached = policy.cached_sections(pdf_key)
 with st.sidebar:
     st.caption(
         f"약관 {len(terms_doc.parts)}개 · 조 {len(terms_doc.body_articles)}개"
-        + (" · 정답 데이터 있음" if golden else "")
+        + (
+            (" · 정답 초안 있음 (진단보험금)" if policy.is_draft(golden) else " · 정답 데이터 있음")
+            if golden
+            else ""
+        )
         + (f" · AI 추출 {len(cached)}묶음" if cached else "")
     )
     covered = set(cached) | policy.golden_keys(terms_doc, golden)
@@ -173,8 +186,8 @@ with st.sidebar:
 
 
 def _title(src: SourceRef) -> str | None:
-    a = policy.article_for(terms_doc, src)
-    return a.title if a else None
+    found = policy.source_text(terms_doc, src)
+    return found[0] if found and src.article else None
 
 
 # --- 서류 올리기 ---
@@ -212,11 +225,19 @@ m[0].metric("서류", len(docs))
 m[1].metric("치료 항목", len(claim.items))
 m[2].metric("보장 연결", sum(link.status == "linked" for link in cmap.links))
 m[3].metric("확인·제외", sum(link.status in ("check", "excluded") for link in cmap.links))
-m[4].metric("참고 계산", f"{sum(e.payable for e in cmap.estimates):,}원")
+diag_links = [x for x in cmap.links if x.item.benefit == "diagnosis" and x.status == "linked"]
+if cmap.estimates or not diag_links:
+    m[4].metric("참고 계산", f"{sum(e.payable for e in cmap.estimates):,}원")
+else:
+    m[4].metric(
+        "진단 보장",
+        f"{len(diag_links)}건",
+        help="정액형은 가입금액 기준이라 금액을 계산하지 않습니다.",
+    )
 info = [
     f"진료일 {claim.visit_date}" if claim.visit_date else None,
     f"{claim.facility} ({claim.facility_type or '종류 미상'})" if claim.facility else None,
-    "입원" if claim.setting == "hospitalization" else "통원",
+    ("입원" if claim.setting == "hospitalization" else "통원") if claim.items else None,
     f"진단 {', '.join(claim.kcd)}" if claim.kcd else None,
 ]
 st.caption(" · ".join(x for x in info if x))
@@ -243,8 +264,10 @@ st.dataframe(
         {
             "": icon[link.status],
             "치료 항목": link.item.name,
-            "구분": {"covered": "급여", "uncovered": "비급여"}.get(link.item.benefit, "?"),
-            "환자 부담(원)": link.item.patient,
+            "구분": {"covered": "급여", "uncovered": "비급여", "diagnosis": "진단"}.get(
+                link.item.benefit, "?"
+            ),
+            "환자 부담(원)": link.item.patient if link.item.benefit != "diagnosis" else None,
             "상태": STATUS_LABEL[link.status],
             "약관 보장": link.rule.name if link.rule else "",
             "근거 조항": ", ".join(article_label(s) for s in link.sources),
@@ -275,12 +298,12 @@ for link in cmap.links:
         if key in seen:
             continue
         seen.add(key)
-        art = policy.article_for(terms_doc, src)
-        where = article_label(src) + (f" ({art.title})" if art and art.title else "")
+        art = policy.source_text(terms_doc, src)  # (제목, 원문) — 조 또는 별표
+        where = article_label(src) + (f" ({art[0]})" if art and art[0] and src.article else "")
         where += f" 《{src.section}》" if src.section else ""
         with st.expander(f"{where} — {src.part}" + ("" if art else "  ⚠️ 원문에서 못 찾음")):
             if art:
-                body = policy.highlight(art.full_text(), src.quote)
+                body = policy.highlight(art[1], src.quote)
                 st.markdown(
                     f"<div style='white-space:pre-wrap;font-size:14px;line-height:1.6'>{body}</div>",
                     unsafe_allow_html=True,

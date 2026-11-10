@@ -1,0 +1,731 @@
+{
+  "name": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+  "insurer": "삼성생명",
+  "version": "2026-09-23 공시 약관 (정답 초안 — 팀원 원문 대조 확인 필요)",
+  "coverages": [
+    {
+      "id": "p0",
+      "name": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+      "kind": "main",
+      "risks": [
+        {
+          "id": "p0/diagnosis1",
+          "claim_reason": "diagnosis",
+          "coverage_code": "p0/CANCER",
+          "rules": [
+            {
+              "id": "p0/diagnosis1/1",
+              "name": "암진단보험금Ⅰ",
+              "conditions": {
+                "exemption_days": 90,
+                "reduction": {
+                  "days": 365,
+                  "ratio": {
+                    "numerator": 50,
+                    "denominator": 100
+                  }
+                },
+                "occurrence": "first"
+              },
+              "special_conditions": [
+                {
+                  "type": "sex",
+                  "description": "자궁암은 여성, 전립선암은 남성인 경우에 한함"
+                },
+                {
+                  "type": "prior_payment",
+                  "description": "최초계약의 암보장개시일 이후 이미 암진단보험금이 지급된 암의 재발·전이·잔존은 지급하지 않음 (제4조 ⑧)"
+                }
+              ],
+              "benefit": {
+                "type": "rate",
+                "base": "sum_insured",
+                "ratio": {
+                  "numerator": 40,
+                  "denominator": 100
+                }
+              },
+              "source": {
+                "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                "quote": "최초계약의 계약일부터 1년 초과 : 보험가입금액의 40%",
+                "appendix": "별표 1"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "암보장개시일 이후에 암으로 진단 확정 되었을 경우 : 암진단보험금Ⅰ",
+                  "article": "제3조",
+                  "item": 1
+                },
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "그 날을 포함하여 90일이 지난날의 다음날",
+                  "article": "제2조의9",
+                  "paragraph": 1
+                },
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "최초계약의 계약일부터 1년 초과시에 지급하는 보험금의 50%를 지급합니다",
+                  "article": "제4조",
+                  "paragraph": 5
+                }
+              ],
+              "status": "needs_review"
+            }
+          ]
+        },
+        {
+          "id": "p0/diagnosis2",
+          "claim_reason": "diagnosis",
+          "coverage_code": "p0/CANCER",
+          "rules": [
+            {
+              "id": "p0/diagnosis2/1",
+              "name": "암진단보험금Ⅱ",
+              "conditions": {
+                "exemption_days": 90,
+                "reduction": {
+                  "days": 365,
+                  "ratio": {
+                    "numerator": 50,
+                    "denominator": 100
+                  }
+                },
+                "occurrence": "first"
+              },
+              "special_conditions": [
+                {
+                  "type": "excluded_code",
+                  "related_rule_id": null,
+                  "description": "전립선암(PROSTATE) 제외"
+                },
+                {
+                  "type": "sex",
+                  "description": "자궁암은 여성인 경우에 한함"
+                },
+                {
+                  "type": "prior_payment",
+                  "description": "최초계약의 암보장개시일 이후 이미 암진단보험금이 지급된 암의 재발·전이·잔존은 지급하지 않음 (제4조 ⑧)"
+                }
+              ],
+              "benefit": {
+                "type": "rate",
+                "base": "sum_insured",
+                "ratio": {
+                  "numerator": 40,
+                  "denominator": 100
+                }
+              },
+              "source": {
+                "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                "quote": "최초계약의 계약일부터 1년 초과 : 보험가입금액의 40%",
+                "appendix": "별표 1"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "“전립선암”이외의 암으로 진단 확정 되었을 경우 : 암진단보험금",
+                  "article": "제3조",
+                  "item": 1
+                },
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "그 날을 포함하여 90일이 지난날의 다음날",
+                  "article": "제2조의9",
+                  "paragraph": 1
+                },
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "최초계약의 계약일부터 1년 초과시에 지급하는 보험금의 50%를 지급합니다",
+                  "article": "제4조",
+                  "paragraph": 5
+                }
+              ],
+              "status": "needs_review"
+            }
+          ]
+        },
+        {
+          "id": "p0/diagnosis3",
+          "claim_reason": "diagnosis",
+          "coverage_code": "p0/CANCER",
+          "rules": [
+            {
+              "id": "p0/diagnosis3/1",
+              "name": "암진단보험금Ⅲ",
+              "conditions": {
+                "exemption_days": 90,
+                "reduction": {
+                  "days": 365,
+                  "ratio": {
+                    "numerator": 50,
+                    "denominator": 100
+                  }
+                },
+                "occurrence": "first"
+              },
+              "special_conditions": [
+                {
+                  "type": "excluded_code",
+                  "description": "중증 갑상선암(THYROID 중 수질성·역형성), 초기 이외 유방암(BREAST 중 AJCC 1기 아님), 자궁암(UTERUS), 전립선암(PROSTATE) 제외"
+                },
+                {
+                  "type": "prior_payment",
+                  "description": "최초계약의 암보장개시일 이후 이미 암진단보험금이 지급된 암의 재발·전이·잔존은 지급하지 않음 (제4조 ⑧)"
+                }
+              ],
+              "benefit": {
+                "type": "rate",
+                "base": "sum_insured",
+                "ratio": {
+                  "numerator": 120,
+                  "denominator": 100
+                }
+              },
+              "source": {
+                "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                "quote": "최초계약의 계약일부터 1년 초과 : 보험가입금액의 120%",
+                "appendix": "별표 1"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "이외의 암으로 진단 확정 되었을 경우 : 암진단보험금Ⅲ",
+                  "article": "제3조",
+                  "item": 1
+                },
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "그 날을 포함하여 90일이 지난날의 다음날",
+                  "article": "제2조의9",
+                  "paragraph": 1
+                },
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "최초계약의 계약일부터 1년 초과시에 지급하는 보험금의 50%를 지급합니다",
+                  "article": "제4조",
+                  "paragraph": 5
+                }
+              ],
+              "status": "needs_review"
+            }
+          ]
+        },
+        {
+          "id": "p0/diagnosis4",
+          "claim_reason": "diagnosis",
+          "rules": [
+            {
+              "id": "p0/diagnosis4/1",
+              "name": "소액암진단보험금 (초기유방암·경계성종양·중증 이외 갑상선암)",
+              "conditions": {
+                "reduction": {
+                  "days": 365,
+                  "ratio": {
+                    "numerator": 50,
+                    "denominator": 100
+                  }
+                },
+                "occurrence": "first"
+              },
+              "special_conditions": [
+                {
+                  "type": "stage_criteria",
+                  "description": "초기유방암 = 유방암 중 AJCC 제8판 TNM 1기, 중증 이외 갑상선암 = 갑상선암 중 수질성·역형성암 아님"
+                },
+                {
+                  "type": "each_once",
+                  "description": "분류질병마다 각각 1회"
+                },
+                {
+                  "type": "prior_payment",
+                  "description": "이미 소액암진단보험금이 지급된 같은 질병의 재발·전이는 지급하지 않음 (제4조 ⑨, 갱신 후 5년 무치료 시 다시 보장 ⑩)"
+                }
+              ],
+              "benefit": {
+                "type": "rate",
+                "base": "sum_insured",
+                "ratio": {
+                  "numerator": 24,
+                  "denominator": 100
+                }
+              },
+              "source": {
+                "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                "quote": "최초계약의 계약일부터 1년 초과 : 보험가입금액의 24%",
+                "appendix": "별표 1"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "소액암진단보험금",
+                  "article": "제3조",
+                  "item": 2
+                },
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "최초계약의 계약일부터 1년 초과시에 지급하는 보험금의 50%를 지급합니다",
+                  "article": "제4조",
+                  "paragraph": 5
+                }
+              ],
+              "status": "needs_review"
+            }
+          ]
+        },
+        {
+          "id": "p0/diagnosis5",
+          "claim_reason": "diagnosis",
+          "rules": [
+            {
+              "id": "p0/diagnosis5/1",
+              "name": "소액암진단보험금 (제자리암·기타피부암·비침습 방광암·대장점막내암)",
+              "conditions": {
+                "reduction": {
+                  "days": 365,
+                  "ratio": {
+                    "numerator": 50,
+                    "denominator": 100
+                  }
+                },
+                "occurrence": "first"
+              },
+              "special_conditions": [
+                {
+                  "type": "stage_criteria",
+                  "description": "비침습 방광암 = AJCC 제8판 TaN0M0, 대장점막내암 = 점막하층 미침범 (KCD 만으로 판정 불가)"
+                },
+                {
+                  "type": "each_once",
+                  "description": "분류질병마다 각각 1회"
+                },
+                {
+                  "type": "prior_payment",
+                  "description": "이미 소액암진단보험금이 지급된 같은 질병의 재발·전이는 지급하지 않음 (제4조 ⑨)"
+                }
+              ],
+              "benefit": {
+                "type": "rate",
+                "base": "sum_insured",
+                "ratio": {
+                  "numerator": 12,
+                  "denominator": 100
+                }
+              },
+              "source": {
+                "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                "quote": "최초계약의 계약일부터 1년 초과 : 보험가입금액의 12%",
+                "appendix": "별표 1"
+              },
+              "extra_sources": [
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "소액암진단보험금",
+                  "article": "제3조",
+                  "item": 2
+                },
+                {
+                  "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+                  "quote": "최초계약의 계약일부터 1년 초과시에 지급하는 보험금의 50%를 지급합니다",
+                  "article": "제4조",
+                  "paragraph": 5
+                }
+              ],
+              "status": "needs_review"
+            }
+          ]
+        }
+      ],
+      "exclusions": [
+        {
+          "id": "p0/exclusion1",
+          "kind": "cause",
+          "description": "피보험자가 고의로 자신을 해친 경우",
+          "exception": "심신상실 등으로 자유로운 의사결정을 할 수 없는 상태였으면 지급",
+          "source": {
+            "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+            "quote": "피보험자가 고의로 자신을 해친 경우",
+            "article": "제5조",
+            "item": 1
+          },
+          "status": "needs_review"
+        },
+        {
+          "id": "p0/exclusion2",
+          "kind": "cause",
+          "description": "보험수익자가 고의로 피보험자를 해친 경우",
+          "exception": "일부 보험수익자면 다른 보험수익자 몫은 지급",
+          "source": {
+            "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+            "quote": "보험수익자가 고의로 피보험자를 해친 경우",
+            "article": "제5조",
+            "item": 2
+          },
+          "status": "needs_review"
+        },
+        {
+          "id": "p0/exclusion3",
+          "kind": "cause",
+          "description": "계약자가 고의로 피보험자를 해친 경우",
+          "source": {
+            "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+            "quote": "계약자가 고의로 피보험자를 해친 경우",
+            "article": "제5조",
+            "item": 3
+          },
+          "status": "needs_review"
+        }
+      ]
+    }
+  ],
+  "coverage_codes": [
+    {
+      "code": "p0/CANCER",
+      "name": "암 (별표2 악성신생물, 초기유방암·중증 이외 갑상선암·비침습 방광암·대장점막내암 제외)",
+      "kcd": [
+        {
+          "start": "C00",
+          "end": "C14",
+          "kcd_version": 9
+        },
+        {
+          "start": "C15",
+          "end": "C26",
+          "kcd_version": 9
+        },
+        {
+          "start": "C30",
+          "end": "C39",
+          "kcd_version": 9
+        },
+        {
+          "start": "C40",
+          "end": "C41",
+          "kcd_version": 9
+        },
+        {
+          "start": "C43",
+          "end": "C43",
+          "kcd_version": 9
+        },
+        {
+          "start": "C45",
+          "end": "C49",
+          "kcd_version": 9
+        },
+        {
+          "start": "C50",
+          "end": "C50",
+          "kcd_version": 9
+        },
+        {
+          "start": "C51",
+          "end": "C58",
+          "kcd_version": 9
+        },
+        {
+          "start": "C60",
+          "end": "C63",
+          "kcd_version": 9
+        },
+        {
+          "start": "C64",
+          "end": "C68",
+          "kcd_version": 9
+        },
+        {
+          "start": "C69",
+          "end": "C72",
+          "kcd_version": 9
+        },
+        {
+          "start": "C73",
+          "end": "C73",
+          "kcd_version": 9
+        },
+        {
+          "start": "C74",
+          "end": "C74",
+          "kcd_version": 9
+        },
+        {
+          "start": "C75",
+          "end": "C75",
+          "kcd_version": 9
+        },
+        {
+          "start": "C76",
+          "end": "C80",
+          "kcd_version": 9
+        },
+        {
+          "start": "C81",
+          "end": "C96",
+          "kcd_version": 9
+        },
+        {
+          "start": "C97",
+          "end": "C97",
+          "kcd_version": 9
+        },
+        {
+          "start": "D45",
+          "end": "D45",
+          "kcd_version": 9
+        },
+        {
+          "start": "D46",
+          "end": "D46",
+          "kcd_version": 9
+        },
+        {
+          "start": "D47.1",
+          "end": "D47.1",
+          "kcd_version": 9
+        },
+        {
+          "start": "D47.3",
+          "end": "D47.3",
+          "kcd_version": 9
+        },
+        {
+          "start": "D47.4",
+          "end": "D47.4",
+          "kcd_version": 9
+        },
+        {
+          "start": "D47.5",
+          "end": "D47.5",
+          "kcd_version": 9
+        }
+      ],
+      "source": {
+        "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+        "quote": "악성신생물로 분류되는 질병",
+        "appendix": "별표 2"
+      }
+    },
+    {
+      "code": "p0/BREAST",
+      "name": "유방암 (별표3)",
+      "kcd": [
+        {
+          "start": "C50",
+          "end": "C50",
+          "kcd_version": 9
+        }
+      ],
+      "source": {
+        "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+        "quote": "유방의 악성신생물 C50",
+        "appendix": "별표 3"
+      }
+    },
+    {
+      "code": "p0/UTERUS",
+      "name": "자궁암 (별표4)",
+      "kcd": [
+        {
+          "start": "C53",
+          "end": "C53",
+          "kcd_version": 9
+        },
+        {
+          "start": "C54",
+          "end": "C54",
+          "kcd_version": 9
+        },
+        {
+          "start": "C55",
+          "end": "C55",
+          "kcd_version": 9
+        }
+      ],
+      "source": {
+        "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+        "quote": "자궁경부의 악성신생물",
+        "appendix": "별표 4"
+      }
+    },
+    {
+      "code": "p0/PROSTATE",
+      "name": "전립선암 (별표5)",
+      "kcd": [
+        {
+          "start": "C61",
+          "end": "C61",
+          "kcd_version": 9
+        }
+      ],
+      "source": {
+        "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+        "quote": "전립선의 악성신생물 C61",
+        "appendix": "별표 5"
+      }
+    },
+    {
+      "code": "p0/SKIN_OTHER",
+      "name": "기타피부암 (별표6)",
+      "kcd": [
+        {
+          "start": "C44",
+          "end": "C44",
+          "kcd_version": 9
+        }
+      ],
+      "source": {
+        "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+        "quote": "기타 피부의 악성신생물 C44",
+        "appendix": "별표 6"
+      }
+    },
+    {
+      "code": "p0/THYROID",
+      "name": "갑상선암 (별표7)",
+      "kcd": [
+        {
+          "start": "C73",
+          "end": "C73",
+          "kcd_version": 9
+        }
+      ],
+      "source": {
+        "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+        "quote": "갑상선의 악성신생물 C73",
+        "appendix": "별표 7"
+      }
+    },
+    {
+      "code": "p0/IN_SITU",
+      "name": "제자리암 (별표8, 비침습 방광암·대장점막내암 제외)",
+      "kcd": [
+        {
+          "start": "D00",
+          "end": "D00",
+          "kcd_version": 9
+        },
+        {
+          "start": "D01",
+          "end": "D01",
+          "kcd_version": 9
+        },
+        {
+          "start": "D02",
+          "end": "D02",
+          "kcd_version": 9
+        },
+        {
+          "start": "D03",
+          "end": "D03",
+          "kcd_version": 9
+        },
+        {
+          "start": "D04",
+          "end": "D04",
+          "kcd_version": 9
+        },
+        {
+          "start": "D05",
+          "end": "D05",
+          "kcd_version": 9
+        },
+        {
+          "start": "D06",
+          "end": "D06",
+          "kcd_version": 9
+        },
+        {
+          "start": "D07",
+          "end": "D07",
+          "kcd_version": 9
+        },
+        {
+          "start": "D09",
+          "end": "D09",
+          "kcd_version": 9
+        }
+      ],
+      "source": {
+        "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+        "quote": "제자리암으로 분류되는 질병",
+        "appendix": "별표 8"
+      }
+    },
+    {
+      "code": "p0/BORDERLINE",
+      "name": "경계성종양 (별표9)",
+      "kcd": [
+        {
+          "start": "D37",
+          "end": "D37",
+          "kcd_version": 9
+        },
+        {
+          "start": "D38",
+          "end": "D38",
+          "kcd_version": 9
+        },
+        {
+          "start": "D39",
+          "end": "D39",
+          "kcd_version": 9
+        },
+        {
+          "start": "D40",
+          "end": "D40",
+          "kcd_version": 9
+        },
+        {
+          "start": "D41",
+          "end": "D41",
+          "kcd_version": 9
+        },
+        {
+          "start": "D42",
+          "end": "D42",
+          "kcd_version": 9
+        },
+        {
+          "start": "D43",
+          "end": "D43",
+          "kcd_version": 9
+        },
+        {
+          "start": "D44",
+          "end": "D44",
+          "kcd_version": 9
+        },
+        {
+          "start": "D47.0",
+          "end": "D47.0",
+          "kcd_version": 9
+        },
+        {
+          "start": "D47.2",
+          "end": "D47.2",
+          "kcd_version": 9
+        },
+        {
+          "start": "D47.7",
+          "end": "D47.7",
+          "kcd_version": 9
+        },
+        {
+          "start": "D47.9",
+          "end": "D47.9",
+          "kcd_version": 9
+        },
+        {
+          "start": "D48",
+          "end": "D48",
+          "kcd_version": 9
+        }
+      ],
+      "source": {
+        "part": "삼성 인터넷암보험(2404)(갱신형,무배당) 약관",
+        "quote": "행동양식 불명 또는 미상의 신생물",
+        "appendix": "별표 9"
+      }
+    }
+  ]
+}

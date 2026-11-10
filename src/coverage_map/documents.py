@@ -39,7 +39,7 @@ class Item:
     """청구 대상 의료비 한 줄."""
 
     name: str
-    benefit: str  # covered | uncovered | unknown
+    benefit: str  # covered | uncovered | unknown | diagnosis (진단서 질병코드)
     total: int
     patient: int  # 환자 부담
     doc: str  # 나온 서류 파일명

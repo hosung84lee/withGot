@@ -51,15 +51,23 @@ def to_dot(cmap: CoverageMap, title_of: Callable[[SourceRef], str | None] | None
     doc_index = {d.filename: i for i, d in enumerate(docs)}
 
     item_nodes = []
-    for i, link in enumerate(cmap.links):
+    item_id: dict[int, str] = {}  # 같은 항목(진단 하나 → 규칙 여러 개)은 칸 하나로
+    for link in cmap.links:
+        key = id(link.item)
+        if key in item_id:
+            continue
+        item_id[key] = f"i{len(item_id)}"
         it = link.item
-        kind = {"covered": "급여", "uncovered": "비급여"}.get(it.benefit, "구분 없음")
-        label = f"{_short(it.name, 16)}\n{kind} · {it.patient:,}원"
+        if it.benefit == "diagnosis":
+            label = f"{_short(it.name, 16)}\n진단서 질병코드"
+        else:
+            kind = {"covered": "급여", "uncovered": "비급여"}.get(it.benefit, "구분 없음")
+            label = f"{_short(it.name, 16)}\n{kind} · {it.patient:,}원"
         item_nodes.append(
-            f"i{i} [label={_q(label)} color={_q(COLOR[link.status])} "
+            f"{item_id[key]} [label={_q(label)} color={_q(COLOR[link.status])} "
             f"fillcolor={_q(FILL[link.status])}];"
         )
-    cluster("items", "② 치료 항목 (환자 부담)", item_nodes)
+    cluster("items", "② 치료 항목·진단", item_nodes)
 
     rule_ids: dict[str, str] = {}
     rule_nodes = []
@@ -118,10 +126,13 @@ def to_dot(cmap: CoverageMap, title_of: Callable[[SourceRef], str | None] | None
                 edges_art.add((owner, art_ids[key]))
     cluster("arts", "④ 약관 조항 (근거)", art_nodes)
 
-    for i, link in enumerate(cmap.links):
+    doc_edges = set()
+    for link in cmap.links:
+        node = item_id[id(link.item)]
         di = doc_index.get(link.item.doc)
-        if di is not None:
-            out.append(f"d{di} -> i{i};")
+        if di is not None and (di, node) not in doc_edges:
+            doc_edges.add((di, node))
+            out.append(f"d{di} -> {node};")
         if link.exclusion:
             target = excl_ids[link.exclusion.id]
         elif link.rule:
@@ -130,7 +141,7 @@ def to_dot(cmap: CoverageMap, title_of: Callable[[SourceRef], str | None] | None
             target = special.get(link.status, ("x_ck",))[0]
         color = COLOR[link.status]
         out.append(
-            f"i{i} -> {target} [color={_q(color)} penwidth=1.6 "
+            f"{node} -> {target} [color={_q(color)} penwidth=1.6 "
             f"tooltip={_q(STATUS_LABEL[link.status])}];"
         )
     for a, b in sorted(edges_art):

@@ -175,3 +175,23 @@ def test_uncovered_rules_in_other_section_do_not_leak():
         "not_covered",
     ]
     assert "질병비급여형 에서 확인" in cmap.links[2].notes[0]
+
+
+def test_diagnosis_links_to_fixed_benefit_by_kcd():
+    # 정액형: 진단서 C50.9 → 인터넷암 2404 정답 초안의 암진단보험금 Ⅰ·Ⅱ·Ⅲ (담보코드 암 KCD 범위)
+    product = load_product(DEFAULT_PRODUCT.parent / "cancer_2404_diagnosis_draft.json")
+    claim = build_claim([parse_document("x.pdf", _diagnosis("C50.9"))])
+    cmap = link_claim(claim, product)
+    assert [(link.status, link.rule.name) for link in cmap.links] == [
+        ("linked", "암진단보험금Ⅰ"),
+        ("linked", "암진단보험금Ⅱ"),
+        ("linked", "암진단보험금Ⅲ"),
+    ]
+    assert "가입금액의 40%" in cmap.links[0].notes
+    assert cmap.links[0].sources[0].appendix == "별표 1"
+    dot = to_dot(cmap)
+    assert dot.count("진단서 질병코드") == 1  # 진단 하나는 칸 하나
+    # 담보코드에 없는 코드 → 확인 필요 (담보코드 없는 소액암 보장 안내)
+    other = link_claim(build_claim([parse_document("x.pdf", _diagnosis("D05.1"))]), product)
+    assert [link.status for link in other.links] == ["check"]
+    assert "소액암" in other.links[0].notes[0]

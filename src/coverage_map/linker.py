@@ -24,7 +24,10 @@ STATUS_LABEL = {
 }
 
 
-COST_TYPE = {"covered": "covered", "uncovered": "non_covered"}  # 서류 급여 구분 → 스키마 cost_type
+COST_TYPE = {
+    "covered": "covered",
+    "uncovered": "non_covered",
+}  # diagnosis 는 진단 연결로 따로  # 서류 급여 구분 → 스키마 cost_type
 LIMIT_PER = {
     "visit": "통원 1회당",
     "year": "연간",
@@ -141,7 +144,12 @@ def _won(n: float) -> str:
 def _rule_notes(rule: BenefitRule) -> list[str]:
     b, c = rule.benefit, rule.conditions
     notes = []
-    if b.ratio:
+    if b.type == "fixed" and b.fixed_amount:
+        notes.append(f"정액 {_won(b.fixed_amount)}")
+    elif b.type == "rate" and b.ratio:
+        base = {"sum_insured": "가입금액", "premium_paid": "납입보험료"}.get(b.base, b.base)
+        notes.append(f"{base}의 {b.ratio.numerator / b.ratio.denominator:.0%}")
+    elif b.ratio:
         notes.append(f"보상률 {b.ratio.numerator / b.ratio.denominator:.0%}")
     if b.deductible:
         parts = [_won(a) for a in b.deductible.amounts]
@@ -150,9 +158,55 @@ def _rule_notes(rule: BenefitRule) -> list[str]:
     if c.limit:
         for a in c.limit.amounts:
             notes.append(f"한도 {LIMIT_PER.get(a.per, a.per)} {_won(a.amount)}")
+        if c.limit.count:
+            notes.append(f"{c.limit.count}회 한도")
+    if c.occurrence == "first":
+        notes.append("최초 1회")
+    if c.exemption_days:
+        notes.append(f"면책 {c.exemption_days}일")
+    if c.reduction:
+        r = c.reduction
+        notes.append(f"{r.days}일 이내 {r.ratio.numerator / r.ratio.denominator:.0%} 지급")
     if b.copay_cap_annual:
         notes.append(f"자기부담 연간 {_won(b.copay_cap_annual)} 초과분 보상")
+    notes += [s.description for s in rule.special_conditions if s.description][:2]
     return notes
+
+
+def _diagnosis_links(claim: Claim, product: Product, section: str | None) -> list[Link]:
+    """진단서의 질병코드(KCD) → 진단 보장(claim_reason=diagnosis)의 담보코드 KCD 범위로 연결 (정액형)."""
+    codes = {c.code: c for c in product.coverage_codes}
+    risks = [
+        r
+        for cov in product.coverages
+        for r in cov.risks
+        if r.claim_reason == "diagnosis" and (section is None or r.section in (None, section))
+    ]
+    if not risks:
+        return []
+    src_doc = next((d.filename for d in claim.docs if d.kind == "DIAGNOSIS"), "")
+    links = []
+    for code in claim.kcd:
+        item = Item(f"진단 {code}", "diagnosis", 0, 0, src_doc, 0)
+        matched = []
+        for risk in risks:
+            cc = codes.get(risk.coverage_code or "")
+            if cc and any(kcd_in(code, k.start, k.end) for k in cc.kcd):
+                for rule in risk.rules:
+                    matched.append(
+                        Link(item, "linked", rule=rule, notes=[cc.name, *_rule_notes(rule)])
+                    )
+        if matched:
+            links += matched
+        else:
+            uncoded = [r for r in risks if not r.coverage_code]
+            note = f"진단 {code} 에 맞는 진단 보장(담보코드 KCD)을 찾지 못했습니다."
+            if uncoded:
+                note += " 담보코드가 없는 진단 보장은 직접 확인하세요: " + ", ".join(
+                    r.rules[0].name for r in uncoded if r.rules
+                )
+            links.append(Link(item, "check", notes=[note]))
+    return links
 
 
 def link_claim(claim: Claim, product: Product, section: str | None = None) -> CoverageMap:
@@ -252,6 +306,7 @@ def link_claim(claim: Claim, product: Product, section: str | None = None) -> Co
             continue
         links.append(Link(item, "linked", rule=rule, notes=_rule_notes(rule)))
 
+    links += _diagnosis_links(claim, product, section)
     return CoverageMap(claim, product, links, claim_excl, _estimates(links))
 
 
@@ -260,7 +315,7 @@ def _estimates(links: list[Link]) -> list[Estimate]:
     out = []
     groups: dict[str, list[Link]] = {}
     for link in links:
-        if link.status == "linked" and link.rule:
+        if link.status == "linked" and link.rule and link.item.benefit != "diagnosis":
             groups.setdefault(link.rule.id, []).append(link)
     for group in groups.values():
         rule = group[0].rule
