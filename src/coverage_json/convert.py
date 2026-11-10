@@ -270,7 +270,11 @@ def product_to_items(product: Product) -> list[dict]:
                         "special_case_scope": None,
                         "annual_limit_amount": year,
                         "extension_after_termination": (
-                            {"days": ext.days, "max_outpatient_visits": ext.max_visits}
+                            {
+                                "days": ext.days,
+                                "max_outpatient_visits": ext.max_visits,
+                                "max_outpatient_days": ext.max_visit_days,
+                            }
                             if ext
                             else None
                         ),

@@ -474,7 +474,7 @@ BenefitRule{id, name, insured_role, policy_status?, conditions, special_conditio
             benefit, installment?, source, extra_sources[], status: confirmed|needs_review}
 RuleConditions{exemption_days?, reduction{days, ratio}?, deductible_days?, occurrence?,
                limit{per_event_days?, total_days?, count?, amounts[AmountLimit]},
-               facility?, extension{days, max_visits?}?}
+               facility?, extension{days, max_visits?, max_visit_days?}?}   # 통원 한도: '90회' → max_visits, '90일' → max_visit_days
 AmountLimit{amount(원), per: visit|day|stay|year|daily_average|event, selectable}
 Benefit{type: rate|fixed|actual_cost, base: sum_insured|premium_paid|reserve|medical_cost,
         ratio{numerator, denominator}?, fixed_amount?, min_amount?, max_amount?,
@@ -1103,7 +1103,7 @@ schema_gap 8곳: 제3조 ②2.(감면) ⑤(갱신) ⑥⑧(1회 산정) ⑦(하�
 - **모든 키에 product_id**: 규칙 id(`p0/질병급여형/…`)가 개정 전후 상품에서 같아서. 두 상품을 한 DB 에 넣고 rule_id 로 조인해 비교.
 - **참조조건은 항목코드·값 한 줄씩** (`rule_condition`): `EXEMPT_DAYS`, `REDUCE_DAYS`/`REDUCE_RATIO_NUM`/`REDUCE_RATIO_DEN`,
   `DEDUCT_DAYS`, `LIMIT_EVENT_DAYS`, `LIMIT_TOTAL_DAYS`, `LIMIT_COUNT`, `LIMIT_AMT_<VISIT|DAY|STAY|YEAR|DAILY_AVERAGE|EVENT>`(selectable 컬럼),
-  `EXT_DAYS`, `EXT_VISITS`. 규칙당 하나인 값(급부 유형·보상률·자기부담 상한·공제 선택)은 `benefit` 컬럼.
+  `EXT_DAYS`, `EXT_VISITS`, `EXT_VISIT_DAYS`. 규칙당 하나인 값(급부 유형·보상률·자기부담 상한·공제 선택)은 `benefit` 컬럼.
 - **근거는 한 테이블** (`source_ref`): `target_type`(rule|exclusion|coverage|coverage_code) + `target_id`, `role`(primary|extra).
 - 외래키 ON, CHECK(종류·상태), 상품 삭제 시 CASCADE. 같은 product_id 로 저장하면 지우고 다시 넣음(한 트랜잭션). 모든 목록 순서는 `seq`.
 - 완료 기준: 실손 정답 → 테이블 → Product 가 원래와 같음, 행 수 product 1 · coverage 1 · coverage_code 5 · kcd_range 7 · risk 3 · exclusion 7 ·

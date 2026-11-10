@@ -105,6 +105,8 @@ def expected_numbers(rule: BenefitRule) -> list[tuple[str, float, str]]:
         out.append(("days", c.extension.days, "연장 보상 일수"))
         if c.extension.max_visits:
             out.append(("count", c.extension.max_visits, "연장 보상 통원 횟수"))
+        if c.extension.max_visit_days:
+            out.append(("days", c.extension.max_visit_days, "연장 보상 통원 일수"))
     if c.exemption_days:
         out.append(("days", c.exemption_days, "면책기간"))
     if c.reduction:

@@ -94,7 +94,7 @@ erDiagram
 | `DEDUCT_DAYS` | 공제일수 | 일 | `conditions.deductible_days` |
 | `LIMIT_EVENT_DAYS` / `LIMIT_TOTAL_DAYS` / `LIMIT_COUNT` | 1회 입원당 한도일수 / 통산 한도일수 / 지급 횟수 | 일 / 일 / 회 | `conditions.limit` |
 | `LIMIT_AMT_<단위>` | 금액 한도 (`VISIT` 통원 1회당, `DAY`, `STAY`, `YEAR`, `DAILY_AVERAGE`, `EVENT`) | 원 | `conditions.limit.amounts` (`selectable` 컬럼 = 계약자 선택) |
-| `EXT_DAYS` / `EXT_VISITS` | 계약 종료 후 보상 일수 / 통원 최대 횟수 | 일 / 회 | `conditions.extension` |
+| `EXT_DAYS` / `EXT_VISITS` / `EXT_VISIT_DAYS` | 계약 종료 후 보상 일수 / 통원 최대 횟수 / 통원 최대 일수 | 일 / 회 / 일 | `conditions.extension` |
 
 규칙 하나에 하나만 있는 값(급부 유형·보상률·자기부담 상한·공제 선택 방식)은 `benefit` 컬럼으로 둡니다.
 

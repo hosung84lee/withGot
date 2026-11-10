@@ -336,7 +336,16 @@
                 "integer",
                 "null"
               ],
-              "minimum": 0
+              "minimum": 0,
+              "description": "통원 최대 횟수 (예: 급여 주계약 '최대 90회')"
+            },
+            "max_outpatient_days": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "description": "추가: 통원 최대 일수 (예: 비중증 비급여 특약 '최대 90일'). 횟수가 아니라 일수로 정한 약관"
             }
           }
         },

@@ -92,7 +92,11 @@ class Extension(BaseModel):
     """계약이 끝난 뒤에도 계속 중인 입원·통원을 보상하는 기간."""
 
     days: int = Field(gt=0, description="계약 종료일 다음날부터 일수 (예: 180)")
-    max_visits: int | None = Field(default=None, gt=0, description="통원 최대 횟수 (예: 90)")
+    max_visits: int | None = Field(default=None, gt=0, description="통원 최대 횟수 (예: 90회)")
+    # 약관마다 단위가 다름: 급여 주계약은 '최대 90회', 비중증 비급여 특약은 '최대 90일'
+    max_visit_days: int | None = Field(
+        default=None, gt=0, description="통원 최대 일수 (예: 90일). 횟수가 아니라 일수로 정한 약관"
+    )
 
 
 class RuleConditions(BaseModel):

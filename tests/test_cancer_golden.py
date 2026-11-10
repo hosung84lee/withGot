@@ -115,3 +115,41 @@ def test_real_cancer_2404_draft_is_grounded():
     report = ground_product(draft(), parse_terms(pdf_to_text(pdf)))
     assert report.issues == []
     assert report.confirmed == 8 and report.needs_review == 0
+
+
+def test_extension_visit_days_vs_visits():
+    """계약 종료 후 통원 한도: '최대 90일' 은 max_visit_days, '최대 90회' 는 max_visits 로 따로 확인."""
+    part = "테스트 비급여 특약 약관"
+    doc = parse_terms(
+        f"보험약관\n{part}\n제1조 [목적]\n이 특약은 비급여를 보장합니다.\n제3조 [보상내용]\n"
+        "① 회사는 비급여의료비의 50%에 해당하는 금액을 보상합니다.\n"
+        "② 보험계약 종료일 다음 날부터 180일 이내의 통원을 보상하며 최대 90일 한도 내에서 보상합니다.\n"
+    )
+
+    def product(ext: dict) -> Product:
+        rule = {
+            "id": "r1",
+            "name": "비급여 통원",
+            "conditions": {"extension": {"days": 180, **ext}},
+            "benefit": {"type": "actual_cost", "base": "medical_cost", "ratio": {"numerator": 50}},
+            "source": {
+                "part": part,
+                "article": "제3조",
+                "paragraph": 1,
+                "quote": "50%에 해당하는 금액",
+            },
+            "extra_sources": [
+                {"part": part, "article": "제3조", "paragraph": 2, "quote": "최대 90일"}
+            ],
+        }
+        risk = {"id": "k", "claim_reason": "outpatient", "rules": [rule]}
+        return Product.model_validate(
+            {"name": part, "coverages": [{"id": "c", "name": part, "risks": [risk]}]}
+        )
+
+    assert ground_product(product({"max_visit_days": 90}), doc).issues == []
+    wrong_unit = ground_product(product({"max_visits": 90}), doc)
+    assert [i.code for i in wrong_unit.issues] == ["NUMBER_NOT_FOUND"]  # 원문은 90회가 아니라 90일
+    conn = connect()
+    save_product(conn, product({"max_visit_days": 90}), "p")
+    assert load_product(conn, "p").rules()[0].conditions.extension.max_visit_days == 90

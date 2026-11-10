@@ -44,7 +44,9 @@ def _rule_values(rule: BenefitRule) -> dict:
         "본인부담률 공제": bool(b.deductible and b.deductible.copay_rate),
         "금액 한도": sorted((a.per, a.amount) for a in c.limit.amounts) if c.limit else [],
         "자기부담 연간 상한": b.copay_cap_annual,
-        "연장 보상": (c.extension.days, c.extension.max_visits) if c.extension else None,
+        "연장 보상": (c.extension.days, c.extension.max_visits, c.extension.max_visit_days)
+        if c.extension
+        else None,
     }
 
 

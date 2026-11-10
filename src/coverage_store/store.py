@@ -51,6 +51,7 @@ CONDITION_ITEMS: dict[str, tuple[str, str]] = {
     "LIMIT_AMT_EVENT": ("금액 한도: 사고 1건당", "원"),
     "EXT_DAYS": ("계약 종료 후 보상 일수", "일"),
     "EXT_VISITS": ("계약 종료 후 통원 최대 횟수", "회"),
+    "EXT_VISIT_DAYS": ("계약 종료 후 통원 최대 일수", "일"),
 }
 
 # 상품 하나를 이루는 테이블 (지울 때 자식부터)
@@ -114,6 +115,8 @@ def _conditions(c: RuleConditions) -> list[tuple[str, float, bool]]:
         rows.append(("EXT_DAYS", c.extension.days, False))
         if c.extension.max_visits is not None:
             rows.append(("EXT_VISITS", c.extension.max_visits, False))
+        if c.extension.max_visit_days is not None:
+            rows.append(("EXT_VISIT_DAYS", c.extension.max_visit_days, False))
     return rows
 
 
@@ -420,7 +423,11 @@ def _load_rule(q, r: sqlite3.Row, refs, to_ref) -> BenefitRule:
         limit=Limit(**limit_vals, amounts=amounts) if has_limit else None,
         occurrence=r["occurrence"],
         facility=r["facility"],
-        extension=Extension(days=val("EXT_DAYS"), max_visits=val("EXT_VISITS"))
+        extension=Extension(
+            days=val("EXT_DAYS"),
+            max_visits=val("EXT_VISITS"),
+            max_visit_days=val("EXT_VISIT_DAYS"),
+        )
         if "EXT_DAYS" in cond
         else None,
     )

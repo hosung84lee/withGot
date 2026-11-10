@@ -73,7 +73,11 @@ def full_product() -> Product:
                                         },
                                         "occurrence": "first",
                                         "facility": "종합병원",
-                                        "extension": {"days": 180},
+                                        "extension": {
+                                            "days": 180,
+                                            "max_visits": 90,
+                                            "max_visit_days": 60,
+                                        },
                                     },
                                     "special_conditions": [
                                         {

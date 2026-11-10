@@ -49,7 +49,7 @@ PROMPT = """다음 약관 조문에서 보상 규칙과 보상하지 않는 사�
           "facility": "의료기관 조건 (없으면 null)",
           "limit": {{"amounts": [{{"amount": 200000, "per": "visit|day|stay|year|daily_average|event",
                                   "selectable": true}}]}},
-          "extension": {{"days": 180, "max_visits": 90}}
+          "extension": {{"days": 180, "max_visits": 90, "max_visit_days": null}}
         }},
         "special_conditions": [{{"type": "예: no_health_insurance", "description": "..."}}],
         "benefit": {{"type": "actual_cost|rate|fixed", "base": "medical_cost|sum_insured",
@@ -76,6 +76,8 @@ PROMPT = """다음 약관 조문에서 보상 규칙과 보상하지 않는 사�
 지침
 - 쓰지 않는 항목은 빼거나 null 로 둔다.
 - 입원·통원처럼 보상 방식이 다르면 risk 를 나눈다. 의료기관별로 공제금액이 다르면 rule 을 나눈다.
+- extension(계약 종료 후 계속 중인 입원·통원 보상): 통원 한도가 '최대 90회' 면 max_visits, '최대 90일' 이면
+  max_visit_days 에 쓴다 (단위를 바꿔 쓰지 않는다).
 - 건강보험을 적용받지 못하는 경우처럼 조건이 다른 보상은 별도 rule 로, special_conditions 에 조건을 쓴다.
 - benefit 필수값: type=actual_cost(실손)면 ratio(보상 비율)나 deductible(공제) 중 적어도 하나,
   type=rate 면 ratio, type=fixed 면 fixed_amount. 원문의 '…의 50%' 는 ratio, '…을 뺀 금액' 은 deductible.

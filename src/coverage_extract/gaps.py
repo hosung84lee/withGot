@@ -100,7 +100,7 @@ CONCEPTS: list[Concept] = [
         code="REMAINING_LIMIT",
         name="연장 보상의 잔여 한도",
         kind="field",
-        now="Extension{days, max_visits} 만. 연장 기간 한도가 '연간 한도 − 이미 지급한 금액'인 것을 못 담음",
+        now="Extension{days, max_visits, max_visit_days} 만. 연장 기간 한도가 '연간 한도 − 이미 지급한 금액'인 것을 못 담음",
         proposal="Extension.limit_basis = remaining_annual_amount | remaining_annual_days",
         patterns=[r"차감한잔여(?:금액|일수)"],
     ),

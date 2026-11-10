@@ -133,6 +133,7 @@ Product
 | 통원 1회당 20만원, 연간 5천만원 이내에서 계약자 선택 | `conditions.limit.amounts=[{amount:200000, per:"visit", selectable:true}, {amount:50000000, per:"year", …}]` |
 | 입원 자기부담이 연 200만원 넘으면 초과분 보상 | `benefit.copay_cap_annual=2000000` |
 | 계약 종료 후 180일까지 보상 (통원 최대 90회) | `conditions.extension={days:180, max_visits:90}` |
+| 〃 (통원 최대 90**일** — 비중증 비급여 특약) | `conditions.extension={days:180, max_visit_days:90}` |
 | 건강보험 미적용 시 40% | 별도 규칙 + `special_conditions=[{type:"no_health_insurance"}]` |
 | 보장종목 (질병급여형·상해급여형) | `risk.section`, `source.section` |
 | 한도가 다른 조(제5조)에 있음 | `rule.extra_sources` |
