@@ -1,12 +1,14 @@
 # 해커톤 준비 노트 (새 PC 에서 시작하기)
 
-2026-11-09 에 한 작업을 정리한 문서입니다. 새 PC 에서 이 문서를 보고 환경을 세팅하고,
+2026-11-09~10 에 한 작업을 정리한 문서입니다. 새 PC 에서 이 문서를 보고 환경을 세팅하고,
 [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 를 따라 새 저장소에 다시 구현할 수 있게 썼습니다.
 
 > **중요: 해커톤에서는 이 저장소 코드를 쓸 수 없고 새 저장소에 처음부터 다시 만들어야 합니다.**
 > 이 저장소는 참고용이고, 다시 만들 때는 [REBUILD_GUIDE.md](REBUILD_GUIDE.md)(설계·규칙·정답 수치·테스트 예시)를 따르세요.
 
 - 저장소: https://github.com/hosung84lee/withGot (브랜치 `main`)
+- **3명 분담(약관·보험금·앱)과 영역 간 계약**: [TEAM_INTERFACE.md](TEAM_INTERFACE.md) — H0 에 셋이 함께 확정
+- **새 저장소용 에이전트 규칙(AGENTS.md / CLAUDE.md / settings.json)**: [hackathon_templates/](hackathon_templates/)
 - 세부 문서: [약관 구조화·검증](terms.md) · [사고보장 데이터 추출](coverage_extract.md) · [사고보장 스키마](coverage_schema.md) · [사고보장 테이블](coverage_tables.md)
 
 ## 1. 한눈에 보기
@@ -19,6 +21,7 @@
 | AI 조항 분석 (분류·요약·불공정 조항) | 코드 있음, 실제 LLM 미실행 | `src/terms/analyzer.py` |
 | 사고보장 스키마 (정액 + **실손**) | 동작 | `src/schema/coverage.py` |
 | 사고보장 추출: 묶음 → LLM → 근거 검증 → 정답 비교 | **코드·테스트 완료, 실제 LLM 미실행** | `src/coverage_extract/` |
+| 정액형 근거 검증 (별표) + 암진단 정답 초안 | 동작 · 인터넷암보험 근거 8/8 (초안, 확인 필요) | `src/coverage_extract/grounding.py`, `tests/fixtures/cancer_2404_diagnosis_draft.json` |
 | 스키마 갭 분석 (원문에 있는데 데이터로 못 담은 것 → 확장 제안) | 동작 · 실손 2605 에서 16종 | `src/coverage_extract/gaps.py` |
 | 사고보장 데이터 ↔ 테이블(SQLite) 저장·조회 | 동작 · 저장 후 읽으면 원래 데이터와 같음 | `src/coverage_store/` |
 | 약관 구조화 뷰어 (HTML) | 동작 | `tools/terms_viewer/` |
@@ -67,7 +70,11 @@ git remote add origin https://github.com/<계정>/<새저장소이름>.git
 git push -u origin main           # 처음 push 때 브라우저로 GitHub 로그인
 ```
 
-3. `.env` 파일 (git 에 넣지 않음):
+3. 에이전트 규칙과 폴더 만들기: [hackathon_templates/](hackathon_templates/) 의 파일을 새 저장소 루트에 복사하고
+   README 의 명령으로 하위 폴더 `CLAUDE.md` 를 만듭니다. 폴더 구조와 담당은 [TEAM_INTERFACE.md 9장](TEAM_INTERFACE.md).
+   복사한 뒤 Claude Code 에서 `src/schema/` 파일 수정을 시켜 보고 **거부되는지** 확인하세요 (잠금 리허설).
+
+4. `.env` 파일 (git 에 넣지 않음):
 
 ```ini
 OPENAI_API_KEY=sk-...             # 해커톤에서 받은 키
@@ -82,7 +89,8 @@ OPENAI_MODEL=gpt-6-luna           # 쓸 모델 이름
 
 ### 2.4 구현 시작
 
-- [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 를 열어 두고 마일스톤 M1 부터 진행합니다.
+- H0(첫 1시간): 셋이 [TEAM_INTERFACE.md](TEAM_INTERFACE.md) 11장 체크리스트를 확정하고 `src/schema/` 와 `src/data/mock/` 를 만든 뒤 나눠서 시작합니다.
+- 약관 담당은 [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 를 열어 두고 마일스톤 M1 부터 진행합니다.
   (문서 반입이 허용되면 새 저장소 `docs/` 에 복사해 두면 Claude Code 가 읽기 편합니다. 대회 규정을 먼저 확인하세요.)
 - Claude Code 첫 요청 예: "REBUILD_GUIDE.md 의 마일스톤 M1 부터 순서대로 구현해줘. 각 완료 기준을 테스트로 만들고 통과하면 다음으로 넘어가."
 - 실제 PDF 테스트는 느리므로(약관 하나 25~35초) 처음부터 `pytest --pdf` 같은 옵션으로 분리해 두세요.
@@ -99,10 +107,10 @@ copy .env.example .env            # OPENAI_API_KEY 입력
 ```
 
 ```powershell
-# 빠른 테스트 (약 5초, 128개 통과 · 6개 건너뜀이 정상)
+# 빠른 테스트 (약 5초, 132개 통과 · 7개 건너뜀이 정상)
 uv run pytest
 
-# 실제 약관 PDF 테스트까지 (약 2분, 134개 통과가 정상)
+# 실제 약관 PDF 테스트까지 (약 2분, 139개 통과가 정상)
 uv run pytest --pdf
 
 # 사고보장 추출 묶음 보기 (API 키 없이)
@@ -129,20 +137,45 @@ PowerShell 에서 한글 출력이 깨지면 먼저 `$env:PYTHONIOENCODING="utf-
 `insurance-workbench/LOCAL_SETUP.md`, 테스트는 그 폴더에서 `uv run pytest` (23개).
 withGot 최상위 `pytest` 는 `tests/` 만 봅니다.
 
-## 5. 해커톤에서 할 일 (추천 순서)
+## 5. 해커톤에서 할 일 (역할별)
 
-1. **새 저장소 세팅** (2장) + 약관 PDF 준비.
-2. **M1~M5 재구현** — [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 의 마일스톤 순서. API 키 없이 진행.
-   마일스톤마다 가이드 16장 예시와 15장 수치로 확인. 정답 데이터는 가이드 13장 (새 저장소에서 JSON 으로 다시 작성).
-3. **M6 첫 실제 추출** — 실손 2605 주계약 《질병급여형》 묶음 하나(약 7,700자)만 OpenAI 로 추출 →
-   근거 검증(`confirmed / needs_review`) + 정답 비교(일치율) 확인.
-4. **프롬프트 다듬기** — 비교의 `값이 다름`·`빠짐`, 근거 검증의 `NUMBER_NOT_FOUND` 를 보고 고침.
-5. **범위 넓히기** — 실손 2605 8묶음 전체 (주계약 2 + 비급여 특약 6). 정답을 《상해급여형》·비급여로 늘리기.
-6. **개정 비교** — 실손 2601 과 2605 를 각각 추출해 규칙 id 기준으로 비교.
-7. **화면** — 결과를 보여줄 UI (약관 트리 + 사고보장 규칙 + 근거 원문 이동). 이 저장소의 `tools/terms_viewer/` 화면 구성을 참고.
-8. **정액형** — 암보험은 지급 금액이 별표에 있어 묶음에 인용 별표·정의 조를 넣는 확장이 필요.
+공통 (H0, 셋이 함께): 새 저장소 세팅(2장) → [TEAM_INTERFACE.md](TEAM_INTERFACE.md) 11장 체크리스트 확정 → `src/schema/` 작성·잠금 →
+`src/data/mock/` 에 예시(①~⑤) 넣기. 통합 시점은 **1일차 저녁**(실제 추출 → 계산 → 화면 한 줄)과 **2일차 점심**(정답 일치율 측정).
 
-## 6. 오늘 한 작업 (커밋 순서)
+**약관** — [REBUILD_GUIDE.md](REBUILD_GUIDE.md)
+
+1. **M1~M5 재구현** (API 키 없이). 마일스톤마다 가이드 16장 예시와 15장 수치로 확인. 정답은 가이드 13장·20장.
+2. **M6 첫 실제 추출** — 실손 2605 주계약 《질병급여형》 묶음 하나(약 7,700자) → 근거 검증 + 정답 비교(일치율). 1일차 저녁 통합 전에.
+3. **프롬프트 다듬기** — 비교의 `값이 다름`·`빠짐`, 근거 검증의 `NUMBER_NOT_FOUND` 를 보고 고침. 스키마에 없는 항목은 escalations 로.
+4. **M9 정액형** — 별표 근거 + 암진단 묶음 확장(별표·정의 조) → 인터넷암보험 추출. 보험금 담당의 정액 계산과 맞춤.
+5. **M7 갭 분석** — 발표 차별점. 정액형 개념(합산 지급, 병기 기준, 성별, 재발)을 개념 목록에 추가.
+6. (시간이 남으면) 실손 8묶음 전체, M8 테이블 저장, 개정 비교(2601 ↔ 2605).
+
+**보험금** — [TEAM_INTERFACE.md](TEAM_INTERFACE.md) ②④⑤·7장
+
+1. `calc_actual_cost` (실손: 공제 max·보상률·회당/연간 한도·자기부담 상한) — mock ①(실손 정답)로, 7장 S101~S103 통과.
+2. `calc_fixed_rate` (정액: 보장개시일 90일·1년 이내 50%·최초 1회·Ⅰ+Ⅱ+Ⅲ 합산) — 암 정답 초안으로, S001~S006 통과.
+3. 보장 매칭(KCD → 담보코드, 사건 유형 → 위험률), AI 판단 위임(병기·조직형 등 `unknown` → 검토).
+4. 계산 정답 데이터 30건 확정 (실손 10, 정액 20) — 경계 케이스: 면책 만료 전날/당일, 1년 이내 마지막 날, 재발, 유사암.
+
+**앱** — [TEAM_INTERFACE.md](TEAM_INTERFACE.md) 1·8장, [hackathon_templates/src/app/AGENTS.md](hackathon_templates/src/app/AGENTS.md)
+
+1. mock 으로 화면 4개 뼈대: 약관 구조화(진행 표시) / 사고보장 데이터·근거·갭 검토 / 시나리오 입력·계산 결과 / 검토·승인.
+2. 근거 원문을 나란히 보여주기 — 참고: 이 저장소의 `tools/terms_viewer/` 와 사고보장 시각화 페이지(규칙 → 조·항·별표 원문 하이라이트).
+3. 1일차 저녁부터 mock 을 공개 함수(`run_policy`, `run_claim`) 호출로 교체. 발표 시연 흐름과 대본.
+
+## 6. 한 작업 (커밋 순서)
+
+### 2026-11-10
+
+| 커밋 | 내용 |
+|---|---|
+| `0e61179` | 사고보장 데이터 ↔ 테이블(SQLite) 13개 저장·조회 (`src/coverage_store/`, [coverage_tables.md](coverage_tables.md)) |
+| `29fc5e3` | 스키마 갭 분석 (`coverage_extract/gaps.py`): 원문에 있는데 데이터로 못 담은 개념 16종 + 근거 없는 원문의 이유 3가지 |
+| `20403d3` | 정액형 근거 검증(별표, 약관 범위·번호 정확히) + 인터넷암보험 암진단 정답 초안(근거 8/8) |
+| (이 커밋) | 팀 인터페이스 명세, 에이전트 규칙 템플릿, 재구현 가이드 M7~M9, 이 문서 역할별 할 일 |
+
+### 2026-11-09
 
 저장소 정리
 
@@ -207,15 +240,19 @@ start tools/terms_viewer/out/terms-viewer.html     # 브라우저로 열기 (mac
 ## 9. 알려진 한계
 
 - 사고보장 추출은 **실제 LLM 으로 아직 돌려보지 않음** (테스트는 가짜 응답).
+- 암진단 정답은 **초안** (팀원 원문 대조 필요). 정액형 묶음은 아직 조만 넣어서 LLM 추출 전에 별표·정의 조 확장 필요.
+- 갭 분석이 제안한 스키마 확장 16종은 아직 반영 안 됨 (해커톤 H0 에서 넣을 것 고르기: 추천 합산 한도·1회 산정 규칙).
 - 옆 안내 상자는 끝 표시가 없어 번호로 끝을 판단합니다. 상자 안 다음 번호와 본문 다음 번호가 같으면(상자 ①② 뒤 본문 ③) 구분 못 함. 실제 약관 7개에서는 문제 없었음.
 - 번호 없는 각주 `(주)` 바로 뒤에 본문 `1.` 이 오면 각주 목록으로 볼 수 있음.
 - 보장종목 구분은 끝 표시가 없어 다음 관에서 끝난 것으로 봅니다 (공통인 제4조의2 가 앞 보장종목에 붙음, 검증에는 영향 없음).
 - AI 분석·사고보장의 조 표기는 `제3조` 처럼 표기만 써서, 특약이 여러 개면 어느 약관의 조인지 `part`/`section` 과 함께 봐야 합니다.
 
-## 10. Claude Code 로 이어서 작업할 때
+## 10. Claude Code / Codex 로 작업할 때
 
-- 새 PC 의 Claude Code 는 이전 대화·메모리를 모릅니다. 새 저장소에서 REBUILD_GUIDE.md 를 읽게 하고
-  "마일스톤 M1 부터 구현해줘" 처럼 요청하세요 (2.4).
-- 새 저장소에도 `CLAUDE.md` 를 만들어 두면 좋습니다: 패키지 관리(uv), 테스트 명령(`pytest`, `pytest --pdf`),
-  가이드 위치, 커밋 규칙 정도. 이 저장소의 `CLAUDE.md` 가 예시입니다.
+- 새 PC 의 Claude Code 는 이전 대화·메모리를 모릅니다. 규칙은 [hackathon_templates/](hackathon_templates/) 를 복사한 AGENTS.md(+ CLAUDE.md `@AGENTS.md`)가 알려주고,
+  할 일은 아래처럼 프롬프트로 줍니다.
+- 역할별 첫 요청 예:
+  - **약관**: "docs/REBUILD_GUIDE.md 의 마일스톤 M1 부터 순서대로 구현해줘. 각 완료 기준을 테스트로 만들고 통과하면 다음으로 넘어가. 코드는 src/workflow/policy/ 에."
+  - **보험금**: "docs/TEAM_INTERFACE.md 의 ①④⑤ 계약과 7장 시나리오로 src/mcp_server/ 에 calc_actual_cost 를 만들어줘. 입력은 src/data/mock/ 의 실손 JSON, S101~S103 을 테스트로."
+  - **앱**: "docs/TEAM_INTERFACE.md 1·8장과 src/app/AGENTS.md 를 읽고 src/data/mock/ 의 예시로 화면 4개 뼈대를 만들어줘. 워크플로는 아직 호출하지 말고 mock 만."
 - 구조화 규칙을 고쳤으면 실제 약관 PDF 테스트까지 돌려 15장 수치가 그대로인지 확인하세요.

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest:*)",
+      "Bash(uv run streamlit run:*)",
+      "Bash(uv sync)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Edit(src/schema/**)",
+      "Write(src/schema/**)",
+      "Edit(src/data/pdf/**)",
+      "Write(src/data/pdf/**)",
+      "Edit(src/data/golden/**)",
+      "Write(src/data/golden/**)"
+    ]
+  }
+}
