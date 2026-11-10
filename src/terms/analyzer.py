@@ -6,9 +6,11 @@
 - 내용이 원문에 근거하는지는 validator.validate_analysis 가 따로 확인합니다.
 """
 
+import contextvars
 import json
 import re
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -29,7 +31,9 @@ from schema.terms import (
 
 M = TypeVar("M", bound=BaseModel)
 
-DEFAULT_CHUNK_CHARS = 30_000  # 한 번에 보낼 조문 분량 (문자 수)
+# 한 번에 보낼 조문 분량 (문자 수). 크면 응답(조별 JSON)이 길어져 max_tokens 로 잘리기 쉬움
+DEFAULT_CHUNK_CHARS = 12_000
+DEFAULT_WORKERS = 6  # 묶음을 동시에 보내는 수 (200쪽 넘는 약관은 묶음이 20~30개)
 JSON_RETRIES = 2
 
 SYSTEM = f"""너는 한국 약관을 심사하는 법률 전문가다.
@@ -139,39 +143,106 @@ def ask_json(agent: Agent, prompt: str, model: type[M], retries: int = JSON_RETR
     raise AnalysisError(f"{retries + 1}번 시도했지만 올바른 JSON 을 받지 못했습니다: {last_error}")
 
 
+class _ChunkResult(BaseModel):
+    clauses: list[ClauseAnalysis] = []
+    skipped: list[str] = []  # 실패한 조
+    errors: list[str] = []
+
+
+def _error_text(e: Exception) -> str:
+    return str(e) if isinstance(e, AnalysisError) else f"{type(e).__name__}: {e}"
+
+
+def _analyze_chunk(agent: Agent, title: str, chunk: list[Article]) -> _ChunkResult:
+    """묶음 하나 분석. 응답이 잘리면(max_tokens) 반으로 나눠 다시 시도.
+
+    나눈 절반 중 한쪽이 실패해도 다른 쪽 결과는 살림 (실패한 조만 skipped).
+    """
+    try:
+        batch = ask_json(
+            agent,
+            CLAUSE_PROMPT.format(
+                title=title, articles="\n\n".join(article_block(a) for a in chunk)
+            ),
+            _ClauseBatch,
+        )
+        return _ChunkResult(clauses=batch.clauses)
+    except Exception as e:  # noqa: BLE001 — 묶음 단위로 실패를 모음
+        if isinstance(e, AnalysisError) and "max_tokens" in str(e) and len(chunk) > 1:
+            mid = len(chunk) // 2
+            left = _analyze_chunk(agent, title, chunk[:mid])
+            right = _analyze_chunk(agent, title, chunk[mid:])
+            return _ChunkResult(
+                clauses=left.clauses + right.clauses,
+                skipped=left.skipped + right.skipped,
+                errors=left.errors + right.errors,
+            )
+        return _ChunkResult(skipped=[a.label for a in chunk], errors=[_error_text(e)])
+
+
 def analyze_terms(
     doc: TermsDocument,
     llm: OpenAIClient | None = None,
     model: str | None = None,
     chunk_chars: int = DEFAULT_CHUNK_CHARS,
     on_progress: Callable[[int, int], None] | None = None,
+    workers: int | None = None,
 ) -> TermsAnalysis:
+    """조를 묶음으로 나눠 동시에 분석하고, 조별 요약으로 전체 개요를 만듦.
+
+    - workers: 동시에 보낼 묶음 수. llm 을 직접 주면(테스트용 가짜 등) 기본 1 (응답 순서 보장).
+    - 일부 묶음이 실패해도 나머지 결과로 계속하고, 빠진 조는 TermsAnalysis.skipped 에 남김.
+      모든 묶음이 실패하면 AnalysisError.
+    - on_progress(i, n) 은 호출한 스레드(Streamlit 등)에서 불림.
+    """
     targets = [a for a in doc.articles if not a.deleted]
     if not targets:
         raise AnalysisError("분석할 조가 없습니다.")
     agent = Agent(model, llm=llm, system=SYSTEM, tools=[], max_turns=1, name="terms-analyzer")
     title = doc.title or "(제목 없음)"
+    if workers is None:
+        workers = 1 if llm is not None else DEFAULT_WORKERS
 
     chunks = chunk_articles(targets, chunk_chars)
-    clauses: list[ClauseAnalysis] = []
-    for i, chunk in enumerate(chunks, start=1):
-        if on_progress:
-            on_progress(i, len(chunks) + 1)
-        with span(
-            "step", f"조별 분석 {i}/{len(chunks)}", input={"articles": [a.label for a in chunk]}
-        ) as s:
-            batch = ask_json(
-                agent,
-                CLAUSE_PROMPT.format(
-                    title=title, articles="\n\n".join(article_block(a) for a in chunk)
-                ),
-                _ClauseBatch,
+    total = len(chunks) + 1
+
+    def run(i: int, chunk: list[Article]) -> _ChunkResult:
+        labels = [a.label for a in chunk]
+        with span("step", f"조별 분석 {i}/{len(chunks)}", input={"articles": labels}) as s:
+            r = _analyze_chunk(agent, title, chunk)
+            s.set(
+                output={"clauses": len(r.clauses), "skipped": r.skipped},
+                status="warning" if r.skipped else None,
             )
-            s.set(output={"clauses": len(batch.clauses)})
-        clauses += batch.clauses
+        return r
+
+    results: dict[int, _ChunkResult] = {}
+    done = 0
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        # 스레드마다 현재 컨텍스트(trace 부모 span)를 복사해서 넘김
+        futures = {
+            pool.submit(contextvars.copy_context().run, run, i, chunk): i
+            for i, chunk in enumerate(chunks, start=1)
+        }
+        for f in as_completed(futures):
+            i = futures[f]
+            try:
+                results[i] = f.result()
+            except Exception as e:  # noqa: BLE001 — trace 기록 등 예기치 못한 오류
+                labels = [a.label for a in chunks[i - 1]]
+                results[i] = _ChunkResult(skipped=labels, errors=[_error_text(e)])
+            done += 1
+            if on_progress:
+                on_progress(done, total)
+    ordered = [results[i] for i in sorted(results)]
+    clauses = [c for r in ordered for c in r.clauses]
+    skipped = [x for r in ordered for x in r.skipped]
+    errors = [x for r in ordered for x in r.errors]
+    if not clauses:
+        raise AnalysisError(f"모든 묶음({len(chunks)}개) 분석에 실패했습니다: {errors[0]}")
 
     if on_progress:
-        on_progress(len(chunks) + 1, len(chunks) + 1)
+        on_progress(total, total)
     with span("step", "전체 개요") as s:
         summary_lines = [
             json.dumps(
@@ -197,4 +268,10 @@ def analyze_terms(
         )
         s.set(output=overview.model_dump())
 
-    return TermsAnalysis(overview=overview, clauses=clauses, model=agent.llm.model)
+    return TermsAnalysis(
+        overview=overview,
+        clauses=clauses,
+        model=agent.llm.model,
+        skipped=skipped,
+        errors=errors,
+    )

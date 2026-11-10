@@ -82,7 +82,11 @@ def run_terms_pipeline(
             try:
                 with span("step", "AI 분석") as s:
                     report.analysis = analyze_terms(
-                        terms, llm=llm, model=model, chunk_chars=chunk_chars
+                        terms,
+                        llm=llm,
+                        model=model,
+                        chunk_chars=chunk_chars,
+                        on_progress=lambda i, n: emit(2, f"AI 분석 {i}/{n} (마지막은 전체 개요)"),
                     )
                     s.set(output={"clauses": len(report.analysis.clauses)})
             except AnalysisError as e:

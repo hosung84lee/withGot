@@ -213,6 +213,8 @@ class TermsAnalysis(BaseModel):
     overview: TermsOverview = Field(default_factory=TermsOverview)
     clauses: list[ClauseAnalysis] = Field(default_factory=list)
     model: str = ""
+    skipped: list[str] = Field(default_factory=list)  # 분석에 실패해 빠진 조
+    errors: list[str] = Field(default_factory=list)  # 실패한 묶음의 오류
 
 
 class TermsReport(BaseModel):

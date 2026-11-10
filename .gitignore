@@ -15,3 +15,6 @@ src/data/db/*
 
 # 약관 구조화 뷰어 결과 (tools/terms_viewer/build.py 로 다시 만듦)
 tools/terms_viewer/out/
+
+# 보장맵 캐시 (약관 텍스트·AI 추출 결과)
+src/data/cache/

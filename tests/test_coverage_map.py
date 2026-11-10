@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from coverage_map import build_claim, link_claim, load_product, parse_document, to_dot
 from coverage_map.linker import DEFAULT_PRODUCT, kcd_in
 
@@ -102,3 +104,49 @@ def test_dot_has_all_layers():
 def test_bundled_product_matches_golden():
     golden = Path(__file__).parent / "fixtures" / "silson_2605_disease_covered.json"
     assert json.loads(DEFAULT_PRODUCT.read_text("utf-8")) == json.loads(golden.read_text("utf-8"))
+
+
+def test_highlight_ignores_whitespace_and_escapes():
+    from coverage_map.policy import highlight
+
+    out = highlight("통원 1 회당 20만원 <한도>", "1회당20만원")
+    assert "<mark>1 회당 20만원</mark>" in out and "&lt;한도&gt;" in out
+    assert highlight("abc", "") == "abc"
+
+
+@pytest.mark.pdf
+def test_real_policy_pdf_links_to_articles(tmp_path, monkeypatch):
+    from coverage_map import policy
+
+    monkeypatch.setattr(policy, "CACHE_DIR", tmp_path)
+    pdf = next(p for p in policy.sample_policies() if "2605갱신형" in p.stem)
+    data = pdf.read_bytes()
+    doc = policy.load_terms(data)
+    golden = policy.golden_for(doc)
+    assert golden is not None
+    report = policy.ground(golden, doc)
+    assert report.confirmed == 11 and report.needs_review == 0
+    cmap = _map(("r.pdf", RECEIPT), ("d.pdf", DETAIL))
+    art = policy.article_for(doc, cmap.links[0].sources[0])
+    assert art is not None and art.label == "제3조" and art.section == "질병급여형"
+    assert (tmp_path / "text").exists()  # 텍스트 캐시
+
+
+def test_coverage_view_tables_and_rows():
+    from app import coverage_view
+
+    product = load_product()
+    tables = coverage_view.store_tables(product)
+    assert len(tables["benefit_rule"]) == 4 and len(tables["exclusion"]) == 7
+    assert coverage_view.sqlite_bytes(product)[:15] == b"SQLite format 3"
+    row = coverage_view.rule_rows(product)[1]
+    assert row["청구사유"] == "통원" and "공제 10,000원/20%" in row["급부·조건"]
+    assert coverage_view.exclusion_rows(product)[0]["KCD"] == "F04~F99"
+
+
+def test_merge_combines_same_coverage(tmp_path):
+    from coverage_map import policy
+
+    golden = load_product()
+    merged = policy.merge([golden, golden.model_copy(update={"coverages": []})], "x")
+    assert len(merged.coverages) == 1 and len(merged.rules()) == 4

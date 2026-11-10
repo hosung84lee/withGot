@@ -299,8 +299,35 @@ def test_analyze_terms_chunks(doc):
 
 
 def test_analyze_terms_truncated(doc):
+    # 잘리면 반으로 나눠 다시 시도하고, 한 조까지 잘려 모든 조가 실패하면 에러
+    n = len([a for a in doc.articles if not a.deleted])
+    llm = FakeLLM([('{"clauses": [', "max_tokens")] * (2 * n - 1))
     with pytest.raises(AnalysisError, match="max_tokens"):
-        analyze_terms(doc, llm=FakeLLM([('{"clauses": [', "max_tokens")]))
+        analyze_terms(doc, llm=llm)
+    assert len(llm.requests) == 2 * n - 1  # 8조 → 1+2+4+8
+
+
+def test_analyze_terms_split_on_truncation(doc):
+    targets = [a for a in doc.articles if not a.deleted]
+    mid = len(targets) // 2
+    first, second = {a.label for a in targets[:mid]}, {a.label for a in targets[mid:]}
+    replies = [
+        ('{"clauses": [', "max_tokens"),
+        _clauses_json(doc, first),
+        _clauses_json(doc, second),
+    ]
+    result = analyze_terms(doc, llm=FakeLLM([*replies, OVERVIEW]))
+    assert [c.article for c in result.clauses] == [a.label for a in targets]
+    assert result.skipped == []
+
+
+def test_analyze_terms_partial_failure(doc):
+    chunks = chunk_articles([a for a in doc.articles if not a.deleted], max_chars=300)
+    replies = ["형식 오류"] * 3 + [_clauses_json(doc, {a.label for a in c}) for c in chunks[1:]]
+    result = analyze_terms(doc, llm=FakeLLM([*replies, OVERVIEW]), chunk_chars=300)
+    assert result.skipped == [a.label for a in chunks[0]]
+    assert len(result.errors) == 1 and "JSON" in result.errors[0]
+    assert [c.article for c in result.clauses] == [a.label for c in chunks[1:] for a in c]
 
 
 def test_extract_json():

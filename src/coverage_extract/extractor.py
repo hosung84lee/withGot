@@ -5,8 +5,10 @@ id 는 코드에서 다시 매긴 뒤(묶음끼리 겹치지 않게) grounding �
 LLM 은 OpenAI (agent.Agent). 모델 기본값은 .env 의 OPENAI_MODEL.
 """
 
+import contextvars
 import re
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from pydantic import BaseModel, Field
 
@@ -14,7 +16,7 @@ from agent import Agent
 from agent.llm import OpenAIClient
 from backend.tracing import span
 from coverage_extract.bundles import Bundle, build_bundles
-from coverage_extract.grounding import GroundingReport, ground_product
+from coverage_extract.grounding import GroundingIssue, GroundingReport, ground_product
 from schema.coverage import Coverage, CoverageCode, Exclusion, Product, Risk
 from schema.terms import TermsDocument
 from terms.analyzer import ask_json
@@ -143,17 +145,62 @@ def assemble(doc: TermsDocument, results: list[tuple[Bundle, SectionExtraction]]
     return Product(name=name, coverages=list(coverages.values()), coverage_codes=codes)
 
 
+DEFAULT_WORKERS = 6  # 묶음을 동시에 보내는 수
+
+
+def extract_sections(
+    bundles: list[Bundle],
+    llm: OpenAIClient | None = None,
+    model: str | None = None,
+    workers: int | None = None,
+    on_progress: Callable[[int, int, Bundle], None] | None = None,
+) -> tuple[list[tuple[Bundle, SectionExtraction]], dict[str, str]]:
+    """묶음들을 LLM 으로 추출 (동시에 workers 개). (성공 결과, {실패 묶음 key: 오류}).
+
+    llm 을 직접 주면(테스트용 가짜 등) 기본 workers=1 (응답 순서 보장).
+    on_progress(끝난 수, 전체, 묶음) 은 호출한 스레드에서 불림.
+    """
+    if workers is None:
+        workers = 1 if llm is not None else DEFAULT_WORKERS
+    agent = Agent(model, llm=llm, system=SYSTEM, tools=[], max_turns=1, name="coverage-extractor")
+
+    def run(i: int, bundle: Bundle) -> SectionExtraction:
+        with span("step", f"사고보장 추출 {i}/{len(bundles)}", input={"bundle": bundle.key}) as s:
+            result = ask_json(agent, PROMPT.format(body=bundle.render()), SectionExtraction)
+            s.set(output={"risks": len(result.risks), "exclusions": len(result.exclusions)})
+        return result
+
+    done: dict[int, SectionExtraction] = {}
+    errors: dict[str, str] = {}
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = {
+            pool.submit(contextvars.copy_context().run, run, i, b): i
+            for i, b in enumerate(bundles, start=1)
+        }
+        for n, f in enumerate(as_completed(futures), start=1):
+            i = futures[f]
+            try:
+                done[i] = f.result()
+            except Exception as e:  # noqa: BLE001 — 묶음 하나가 실패해도 나머지는 계속
+                errors[bundles[i - 1].key] = f"{type(e).__name__}: {e}"
+            if on_progress:
+                on_progress(n, len(bundles), bundles[i - 1])
+    return [(bundles[i - 1], done[i]) for i in sorted(done)], errors
+
+
 def extract_coverage(
     doc: TermsDocument,
     llm: OpenAIClient | None = None,
     model: str | None = None,
     sections: list[str] | None = None,
     on_progress: Callable[[int, int, Bundle], None] | None = None,
+    workers: int | None = None,
 ) -> GroundingReport:
     """구조화된 약관에서 사고보장 데이터를 뽑고 근거를 확인한 결과를 돌려줌.
 
     sections 를 주면 그 보장종목(또는 약관 제목에 그 글자가 든 묶음)만 추출합니다.
     예: ["질병급여형"] → 주계약 《질병급여형》 묶음 하나만 (API 비용·시간 절약).
+    묶음은 동시에 추출하고, 실패한 묶음은 EXTRACTION_FAILED 오류로 report.issues 에 남깁니다.
     """
     bundles = build_bundles(doc)
     if sections:
@@ -162,14 +209,16 @@ def extract_coverage(
         raise ExtractionError(
             "추출할 보장 묶음이 없습니다. 보장 조(보상내용 등)를 찾지 못했습니다."
         )
-    agent = Agent(model, llm=llm, system=SYSTEM, tools=[], max_turns=1, name="coverage-extractor")
-    results: list[tuple[Bundle, SectionExtraction]] = []
-    for i, bundle in enumerate(bundles, start=1):
-        if on_progress:
-            on_progress(i, len(bundles), bundle)
-        with span("step", f"사고보장 추출 {i}/{len(bundles)}", input={"bundle": bundle.key}) as s:
-            result = ask_json(agent, PROMPT.format(body=bundle.render()), SectionExtraction)
-            s.set(output={"risks": len(result.risks), "exclusions": len(result.exclusions)})
-        results.append((bundle, result))
-    product = assemble(doc, results)
-    return ground_product(product, doc)
+    results, errors = extract_sections(bundles, llm, model, workers, on_progress)
+    if not results:
+        raise ExtractionError(f"모든 묶음 추출에 실패했습니다: {next(iter(errors.values()))}")
+    report = ground_product(assemble(doc, results), doc)
+    report.issues += failed_issues(errors)
+    return report
+
+
+def failed_issues(errors: dict[str, str]) -> list[GroundingIssue]:
+    return [
+        GroundingIssue(severity="error", code="EXTRACTION_FAILED", target=key, message=msg[:500])
+        for key, msg in errors.items()
+    ]

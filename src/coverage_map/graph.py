@@ -1,5 +1,9 @@
 """보장맵 그림 (Graphviz DOT): 서류 → 치료 항목 → 보장 규칙 → 약관 조항."""
 
+from collections.abc import Callable
+
+from schema.coverage import SourceRef
+
 from .linker import STATUS_LABEL, CoverageMap, article_label
 
 COLOR = {"linked": "#2e7d5b", "check": "#c98a14", "not_covered": "#9aa3a8", "excluded": "#c0392b"}
@@ -14,7 +18,8 @@ def _short(s: str, n: int = 22) -> str:
     return s if len(s) <= n else s[: n - 1] + "…"
 
 
-def to_dot(cmap: CoverageMap) -> str:
+def to_dot(cmap: CoverageMap, title_of: Callable[[SourceRef], str | None] | None = None) -> str:
+    """title_of: 근거 조항의 조 제목 (약관 PDF 를 연결했을 때). 예: 제3조 → '보상내용'."""
     out = [
         "digraph G {",
         "rankdir=LR; nodesep=0.25; ranksep=0.9; bgcolor=transparent;",
@@ -100,7 +105,12 @@ def to_dot(cmap: CoverageMap) -> str:
             key = f"{src.section or ''} {article_label(src)}"
             if key not in art_ids:
                 art_ids[key] = f"a{len(art_ids)}"
-                label = article_label(src) + (f"\n《{src.section}》" if src.section else "")
+                label = article_label(src)
+                title = title_of(src) if title_of else None
+                if title:
+                    label += f"\n({_short(title, 14)})"
+                if src.section:
+                    label += f"\n《{src.section}》"
                 art_nodes.append(
                     f'{art_ids[key]} [label={_q(label)} shape=note fillcolor="#fffdf5"];'
                 )
