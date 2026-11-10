@@ -16,7 +16,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from schema.coverage import BenefitRule, Exclusion, Product, SourceRef
-from schema.terms import Article, TermsDocument
+from schema.terms import Appendix, Article, TermsDocument
 
 _NOISE = re.compile(r"[\s\"'“”‘’`·∙ㆍ･]+")
 _UNITS = {
@@ -31,6 +31,8 @@ _UNITS = {
 _AMOUNT = re.compile(r"(\d+(?:,\d{3})*)(억|천만|백만|십만|만|천)?원")
 _PERCENT = re.compile(r"(\d+(?:\.\d+)?)%")
 _DAYS = re.compile(r"(\d+)일")
+_YEARS = re.compile(r"(\d+)년(?:이내|이후|초과|간|동안|이 ?지|이되|단위)")  # 기간으로 쓰인 'N년'
+_APPENDIX_NO = re.compile(r"별표\s*(\d+)")
 _COUNT = re.compile(r"(\d+)회")
 
 
@@ -70,7 +72,9 @@ def numbers_in(text: str) -> dict[str, set[float]]:
             for m in _AMOUNT.finditer(t)
         },
         "percent": {float(m.group(1)) for m in _PERCENT.finditer(t)},
-        "days": {float(m.group(1)) for m in _DAYS.finditer(t)},
+        # 'N년'(기간)은 N×365일로도 읽음: '계약일부터 1년 이내' ↔ 감액기간 365일
+        "days": {float(m.group(1)) for m in _DAYS.finditer(t)}
+        | {float(m.group(1)) * 365 for m in _YEARS.finditer(t)},
         "count": {float(m.group(1)) for m in _COUNT.finditer(t)},
     }
 
@@ -139,21 +143,53 @@ def find_article(doc: TermsDocument, src: SourceRef) -> Article | None:
     return cands[0] if cands else None
 
 
+def find_appendix(doc: TermsDocument, src: SourceRef) -> Appendix | None:
+    """source 의 별표. 별표 번호는 약관마다 1부터라, source.part 약관 범위(줄 번호) 안에서 찾음.
+    '별표1' 이 '별표 10' 에 맞지 않도록 번호는 정확히 비교."""
+    if not src.appendix:
+        return None
+    pool = doc.appendices
+    part = _part_index(doc, src.part)
+    if part is False:
+        return None
+    if part is not None:
+        start = doc.parts[part].line
+        end = doc.parts[part + 1].line if part + 1 < len(doc.parts) else float("inf")
+        pool = [x for x in pool if start <= x.line < end]
+    m = _APPENDIX_NO.search(src.appendix)
+    if m:
+        cands = [x for x in pool if (n := _APPENDIX_NO.match(x.label)) and n.group(1) == m.group(1)]
+    else:
+        cands = [x for x in pool if squash(src.appendix) in squash(x.label)]
+    return cands[0] if cands else None
+
+
 def _check_source(
     doc: TermsDocument, src: SourceRef, target: str, issues: list[GroundingIssue]
-) -> Article | None:
+) -> str | None:
+    """근거를 찾아 확인하고 그 원문(조 또는 별표)을 돌려줌. 못 찾으면 None."""
     if src.appendix and not src.article:
-        hit = any(squash(src.appendix) in squash(x.label) for x in doc.appendices)
-        if not hit:
+        x = find_appendix(doc, src)
+        if x is None:
             issues.append(
                 GroundingIssue(
                     severity="error",
                     code="SOURCE_NOT_FOUND",
                     target=target,
-                    message=f"별표 '{src.appendix}'를 찾지 못했습니다.",
+                    message=f"별표를 찾지 못했습니다: {src.part} {src.appendix}",
                 )
             )
-        return None
+            return None
+        if src.quote and squash(src.quote) not in squash(x.text):
+            issues.append(
+                GroundingIssue(
+                    severity="warning",
+                    code="QUOTE_NOT_FOUND",
+                    target=target,
+                    message=f"인용문이 {x.label[:20]} 원문에 없습니다: '{src.quote[:60]}'",
+                )
+            )
+        return x.text
     a = find_article(doc, src)
     if a is None:
         where = (
@@ -188,13 +224,13 @@ def _check_source(
                 message=f"인용문이 {a.label} 원문에 없습니다: '{src.quote[:60]}'",
             )
         )
-    return a
+    return a.full_text()
 
 
 def _ground_rule(doc: TermsDocument, rule: BenefitRule, issues: list[GroundingIssue]) -> None:
     before = len(issues)
     found = [_check_source(doc, s, rule.id, issues) for s in [rule.source, *rule.extra_sources]]
-    texts = [a.full_text() for a in found if a is not None]
+    texts = [t for t in found if t is not None]
     # 주 근거 조를 못 찾았으면 숫자는 확인할 수 없음 (SOURCE_NOT_FOUND 만 알림)
     if found[0] is not None:
         have = numbers_in("\n".join(texts))
