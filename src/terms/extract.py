@@ -19,8 +19,16 @@ def pdf_to_text(data: bytes | str | Path) -> str:
 
     스캔본(이미지로만 된 PDF)은 텍스트가 없어서 에러를 냅니다.
     """
-    reader = PdfReader(BytesIO(data) if isinstance(data, bytes) else str(data))
-    pages = [(p.extract_text() or "") for p in reader.pages]
+    try:
+        reader = PdfReader(BytesIO(data) if isinstance(data, bytes) else str(data))
+        pages = [(p.extract_text() or "") for p in reader.pages]
+    except TextExtractionError:
+        raise
+    except Exception as e:  # 손상·암호화된 PDF 등 pypdf 의 여러 오류를 안내 문구로
+        raise TextExtractionError(
+            f"PDF 를 읽지 못했습니다 (손상되었거나 암호가 걸린 파일일 수 있습니다): "
+            f"{type(e).__name__}: {e}"
+        ) from e
     text = "\n".join(pages).strip()
     if len(text) < 20:
         raise TextExtractionError(

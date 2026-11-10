@@ -400,3 +400,11 @@ def test_terms_tools(monkeypatch):
     assert art.result.startswith("제5조(서비스 중단)")
     missing = execute_tool(tools, "get_terms_article", {"doc_id": d.id, "article": "제99조"})
     assert missing.is_error
+
+
+def test_broken_pdf_is_extraction_error():
+    """손상된 PDF 는 pypdf 오류 대신 TextExtractionError (화면이 안내 문구로 보여 줌)."""
+    from terms.extract import TextExtractionError, bytes_to_text
+
+    with pytest.raises(TextExtractionError, match="PDF 를 읽지 못했습니다"):
+        bytes_to_text("broken.pdf", b"%PDF-1.4\ntrailer<</Root 1 0 R>>\n%%EOF")
