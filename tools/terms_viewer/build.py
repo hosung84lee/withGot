@@ -54,6 +54,16 @@ def _segments(nlines, parts, heads, arts, apps):
 def policy_data(pdf: Path, baseline: dict) -> dict:
     t0 = time.time()
     text = pdf_to_text(pdf)
+    data = text_data(pdf.stem, text, baseline, pages=len(PdfReader(pdf).pages))
+    data["t"]["extract"] = round(time.time() - t0, 2)
+    return data
+
+
+def text_data(
+    name: str, text: str, baseline: dict | None = None, pages: int = 0, extract_s: float = 0
+) -> dict:
+    """이미 뽑은 약관 텍스트로 뷰어 데이터 하나를 만듭니다 (앱의 약관 분석 화면에서도 씀)."""
+    baseline = baseline or {}
     t1 = time.time()
     doc = parse_terms(text)
     t2 = time.time()
@@ -87,16 +97,16 @@ def policy_data(pdf: Path, baseline: dict) -> dict:
     ]
     parts = [{"title": p.title, "line": p.line} for p in doc.parts]
     nlines = len(text.split("\n"))
-    before = baseline.get(pdf.stem)
+    before = baseline.get(name)
     if before is None:  # 기준 수치가 없으면 지금 값과 같게 (비교 칸에 변화 없음으로 나옴)
         before = {"articles": len(arts), "artShare": 0, "errors": 0, "warnings": 0}
     return {
-        "name": pdf.stem,
-        "pages": len(PdfReader(pdf).pages),
+        "name": name,
+        "pages": pages,
         "chars": len(text),
         "nlines": nlines,
         "t": {
-            "extract": round(t1 - t0, 2),
+            "extract": round(extract_s, 2),
             "parse": round(t2 - t1, 3),
             "validate": round(t3 - t2, 3),
         },
@@ -135,14 +145,43 @@ def main() -> int:
     if not pdfs:
         print(f"PDF 가 없습니다: {args.pdf_dir}", file=sys.stderr)
         return 1
-    baseline = json.loads((HERE / "baseline_16a4211.json").read_text(encoding="utf-8"))["policies"]
+    baseline = load_baseline()
     data = []
     for pdf in pdfs:
         print(f"구조화 중: {pdf.name}", file=sys.stderr)
         data.append(policy_data(pdf, baseline))
 
+    html = render_html(data)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(html, encoding="utf-8")
+    print(f"저장: {args.out} ({args.out.stat().st_size / 1e6:.1f}MB)", file=sys.stderr)
+    return 0
+
+
+def load_baseline() -> dict:
+    return json.loads((HERE / "baseline_16a4211.json").read_text(encoding="utf-8"))["policies"]
+
+
+SAMPLE_INTRO = "저장소의 약관 7개를 파서 수정 후 코드"
+UPLOAD_INTRO = (
+    '<p>올린 약관을 <span class="mono">src/terms</span>가 약관·관·조·항·호로 나누고 '
+    "검증한 결과입니다 (LLM 없음).</p>"
+)
+
+
+def render_html(data: list[dict], uploaded: bool = False) -> str:
+    """뷰어 데이터 목록 → 브라우저에서 바로 열 수 있는 HTML 한 장.
+
+    uploaded=True: 앱에서 올린 약관용. 소개 문구를 바꾸고, 기준 수치가 없는 '파서 수정 전과 비교' 를 숨김.
+    """
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     html = (HERE / "template.html").read_text(encoding="utf-8")
+    if uploaded:
+        start = html.index("<p>약관 PDF를 올렸을 때")
+        end = html.index("</p>", start) + len("</p>")
+        assert SAMPLE_INTRO in html[start:end]
+        html = html[:start] + UPLOAD_INTRO + html[end:]
+        html = html.replace("</style>", "section:has(#compare) { display: none; }\n</style>", 1)
     html = (
         html.replace("/*__DATA__*/", f"window.TERMS_DATA = {payload};")
         .replace("__COMMIT__", _commit())
@@ -153,10 +192,7 @@ def main() -> int:
         '<!doctype html>\n<html lang="ko"><head><meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n' + html
     )
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(html, encoding="utf-8")
-    print(f"저장: {args.out} ({args.out.stat().st_size / 1e6:.1f}MB)", file=sys.stderr)
-    return 0
+    return html
 
 
 if __name__ == "__main__":

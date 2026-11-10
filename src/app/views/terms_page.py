@@ -1,13 +1,19 @@
 """약관 분석 화면: 원문 입력 → 구조화 → 검증 → AI 분석."""
 
+import time
+from pathlib import Path
+
 import streamlit as st
 
+from app import terms_viewer
 from backend.config import get_settings
-from backend.storage import list_documents
+from backend.storage import get_document, list_documents
 from schema.document import DocumentKind
 from schema.terms import UNFAIR_TYPES, TermsReport, ValidationIssue
-from terms.extract import TextExtractionError, bytes_to_text
+from terms.extract import TextExtractionError, bytes_to_text, document_to_text
 from terms.pipeline import STEPS, run_terms_pipeline
+
+VIEWER_HEIGHT = 1400
 
 st.title("약관 분석")
 st.caption(
@@ -24,8 +30,30 @@ with st.sidebar:
     )
     model = st.text_input("OpenAI 모델", value=settings.openai_model, disabled=not analyze)
 
-tab_text, tab_file, tab_doc = st.tabs(["텍스트 붙여넣기", "파일 올리기", "문서 보관함"])
+tab_file, tab_text, tab_doc, tab_sample = st.tabs(
+    ["파일 올리기", "텍스트 붙여넣기", "문서 보관함", "샘플 약관 구조 뷰어"]
+)
 run_args: dict | None = None
+
+
+with tab_sample:
+    pdfs = terms_viewer.sample_pdfs()
+    st.caption(
+        f"삼성생명 약관 PDF {len(pdfs)}개를 구조화·검증한 결과입니다 (LLM 없음). "
+        "원문 분류 지도, 조 트리, 인용, 검증 결과를 볼 수 있습니다."
+    )
+    have = terms_viewer.SAMPLE_HTML.exists()
+    if st.button("다시 만들기" if have else "뷰어 만들기", disabled=not pdfs):
+        with st.status("약관 PDF 구조화 중… (큰 약관 하나에 1분 안팎)", expanded=True) as s:
+            terms_viewer.build_sample_html(lambda i, n, name: st.write(f"▶ {i + 1}/{n} {name}"))
+            s.update(label="완료", state="complete", expanded=False)
+        have = True
+    if have:
+        st.iframe(terms_viewer.SAMPLE_HTML, height=VIEWER_HEIGHT)
+    elif not pdfs:
+        st.info(f"약관 PDF 가 없습니다: {terms_viewer.PDF_DIR}")
+    else:
+        st.info("아직 만든 뷰어가 없습니다. '뷰어 만들기' 를 누르세요.")
 
 with tab_text, st.form("terms_text"):
     text = st.text_area("약관 원문", height=300, placeholder="제1조(목적) ...")
@@ -35,16 +63,25 @@ with tab_text, st.form("terms_text"):
         else:
             st.warning("약관 원문을 넣어 주세요.")
 
-with tab_file, st.form("terms_file"):
-    up = st.file_uploader("PDF 또는 TXT", type=["pdf", "txt"])
-    if st.form_submit_button("분석", type="primary"):
-        if up is None:
-            st.warning("파일을 선택해 주세요.")
-        else:
-            try:
+with tab_file:
+    up = st.file_uploader(
+        "약관 PDF 또는 TXT",
+        type=["pdf", "txt"],
+        help="올리면 바로 구조화합니다. 큰 약관 PDF 는 텍스트 추출에 1분 안팎 걸립니다.",
+    )
+    file_key = f"{up.name}:{up.size}" if up else None
+    again = st.button("다시 분석", disabled=up is None)
+    # 새 파일이 올라오면 버튼 없이 바로 처리
+    if up is not None and (again or st.session_state.get("terms_file_key") != file_key):
+        st.session_state.terms_file_key = file_key
+        try:
+            with st.spinner(f"{up.name} 텍스트 추출 중…"):
+                t0 = time.time()
                 run_args = {"text": bytes_to_text(up.name, up.getvalue()), "source": up.name}
-            except TextExtractionError as e:
-                st.error(str(e))
+                st.session_state.terms_viewer_extract_s = time.time() - t0
+            st.session_state.terms_viewer_pages = terms_viewer.pdf_pages(up.getvalue())
+        except TextExtractionError as e:
+            st.error(str(e))
 
 with tab_doc:
     pdfs = [d for d in list_documents() if d.kind == DocumentKind.PDF]
@@ -77,6 +114,20 @@ if run_args:
             st.error(str(e))
             st.stop()
         progress.progress(1.0)
+        if "text" in run_args:
+            viewer_text, viewer_name = run_args["text"], run_args["source"]
+        else:
+            d = get_document(run_args["doc_id"])
+            viewer_text, viewer_name = document_to_text(d), d.filename
+        pages = st.session_state.pop("terms_viewer_pages", 0)
+        if "doc_id" in run_args and Path(d.path).exists():
+            pages = terms_viewer.pdf_pages(Path(d.path).read_bytes())
+        st.session_state.terms_viewer_html = terms_viewer.html_for_text(
+            viewer_name,
+            viewer_text,
+            pages=pages,
+            extract_s=st.session_state.pop("terms_viewer_extract_s", 0),
+        )
         status.update(
             label="완료" if not report.analysis_error else "완료 (AI 분석 실패)",
             state="complete" if not report.analysis_error else "error",
@@ -121,7 +172,16 @@ st.page_link(
 if report.analysis_error:
     st.error(f"AI 분석 실패: {report.analysis_error}")
 
-t_struct, t_valid, t_analysis, t_raw = st.tabs(["구조", "검증", "AI 분석", "JSON"])
+t_viewer, t_struct, t_valid, t_analysis, t_raw = st.tabs(
+    ["구조 뷰어", "조 목록", "검증", "AI 분석", "JSON"]
+)
+
+with t_viewer:
+    viewer_html = st.session_state.get("terms_viewer_html")
+    if viewer_html:
+        st.iframe(viewer_html, height=VIEWER_HEIGHT)  # 우리 템플릿 + JSON 데이터 (원문은 esc 처리)
+    else:
+        st.info("다시 분석하면 구조 뷰어가 나옵니다.")
 
 with t_struct:
     if doc.preamble:

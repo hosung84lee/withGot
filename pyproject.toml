@@ -26,6 +26,7 @@ packages = [
     "src/app",
     "src/backend",
     "src/schema",
+    "src/coverage_map",
     "src/workflow",
     "src/agent",
     "src/mcp_server",
