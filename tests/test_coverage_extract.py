@@ -261,6 +261,36 @@ def test_invalid_json_is_retried(doc):
     assert len(calls) == 2 and report.confirmed == 4
 
 
+def _with_bad_rule(reply: str) -> str:
+    """실손형인데 보상률·공제가 없는 규칙을 하나 더한 응답 (스키마 검사 실패)."""
+    data = json.loads(reply)
+    bad = json.loads(json.dumps(data["risks"][0]["rules"][0]))
+    bad.update(id="bad", name="비급여 입원 (형식 오류)")
+    bad["benefit"].pop("ratio", None)
+    bad["benefit"].pop("deductible", None)
+    data["risks"][0]["rules"].append(bad)
+    return json.dumps(data, ensure_ascii=False)
+
+
+def test_invalid_rule_dropped_after_retries(doc):
+    # 3번 모두 같은 틀린 규칙 → 틀린 규칙만 빼고 묶음은 살림 (PARTIAL_EXTRACTION 경고)
+    bad = _with_bad_rule(disease_reply())
+    llm, calls = fake([bad, bad, bad])
+    report = extract_coverage(doc, llm=llm, sections=["질병급여형"])
+    assert len(calls) == 3
+    assert len(report.product.rules()) == 2 and len(report.product.exclusions()) == 2
+    partial = [i for i in report.issues if i.code == "PARTIAL_EXTRACTION"]
+    assert len(partial) == 1 and "비급여 입원 (형식 오류)" in partial[0].message
+    # 재요청에는 스키마 오류 내용이 들어감
+    assert "ratio(보상률)" in user_messages(calls[1])[-1]
+
+
+def test_prompt_states_required_benefit_fields(doc):
+    llm, calls = fake([disease_reply()])
+    extract_coverage(doc, llm=llm, sections=["질병급여형"])
+    assert "type=actual_cost(실손)면 ratio" in user_messages(calls[0])[0]
+
+
 # ---------------------------------------------------------------- 정답 비교
 
 

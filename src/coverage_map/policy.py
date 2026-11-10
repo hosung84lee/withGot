@@ -90,6 +90,17 @@ def cached_sections(key: str) -> dict[str, SectionExtraction]:
     return out
 
 
+def dropped_issues(key: str) -> list:
+    """캐시된 묶음 중 형식이 틀려 뺀 항목 (PARTIAL_EXTRACTION 경고)."""
+    from coverage_extract.grounding import GroundingIssue
+
+    return [
+        GroundingIssue(severity="warning", code="PARTIAL_EXTRACTION", target=k, message=m)
+        for k, r in cached_sections(key).items()
+        for m in r.dropped
+    ]
+
+
 def golden_keys(doc: TermsDocument, golden: Product | None) -> set[str]:
     """정답 데이터가 이미 담고 있는 묶음 (약관 이름 + 보장종목이 같은 묶음)."""
     if not golden:

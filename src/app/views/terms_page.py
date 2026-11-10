@@ -162,7 +162,7 @@ if run_args:
                 product = policy.build_product(terms_doc, cache_key, use_golden=False)
                 if product:
                     coverage = policy.ground(product, terms_doc)
-                    coverage.issues += failed_issues(errors)
+                    coverage.issues += failed_issues(errors) + policy.dropped_issues(cache_key)
                 failed = bool(errors)
                 if errors and not product:
                     note = "모든 묶음 추출에 실패했습니다: " + next(iter(errors.values()))[:300]
@@ -223,6 +223,12 @@ if failed_bundles:
         f"보장 묶음 {len(failed_bundles)}개 추출에 실패해 빠졌습니다: "
         + ", ".join(i.target for i in failed_bundles)
         + f" — {failed_bundles[0].message[:200]}"
+    )
+partial = [i for i in coverage.issues if i.code == "PARTIAL_EXTRACTION"] if coverage else []
+if partial:
+    st.warning(
+        f"AI 응답 형식이 틀린 항목 {len(partial)}개를 빼고 나머지는 살렸습니다 "
+        f"(검증 탭에서 목록 확인). 예: {partial[0].target} — {partial[0].message}"
     )
 if coverage_note:
     st.info(coverage_note)

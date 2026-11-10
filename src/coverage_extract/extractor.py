@@ -6,20 +6,21 @@ LLM 은 OpenAI (agent.Agent). 모델 기본값은 .env 의 OPENAI_MODEL.
 """
 
 import contextvars
+import json
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from agent import Agent
 from agent.llm import OpenAIClient
 from backend.tracing import span
 from coverage_extract.bundles import Bundle, build_bundles
 from coverage_extract.grounding import GroundingIssue, GroundingReport, ground_product
-from schema.coverage import Coverage, CoverageCode, Exclusion, Product, Risk
+from schema.coverage import BenefitRule, Coverage, CoverageCode, Exclusion, Product, Risk
 from schema.terms import TermsDocument
-from terms.analyzer import ask_json
+from terms.analyzer import ask_json, extract_json
 
 SYSTEM = """너는 한국 보험 약관에서 보상 규칙을 뽑아 표준 JSON 으로 옮기는 전문가다.
 
@@ -76,6 +77,9 @@ PROMPT = """다음 약관 조문에서 보상 규칙과 보상하지 않는 사�
 - 쓰지 않는 항목은 빼거나 null 로 둔다.
 - 입원·통원처럼 보상 방식이 다르면 risk 를 나눈다. 의료기관별로 공제금액이 다르면 rule 을 나눈다.
 - 건강보험을 적용받지 못하는 경우처럼 조건이 다른 보상은 별도 rule 로, special_conditions 에 조건을 쓴다.
+- benefit 필수값: type=actual_cost(실손)면 ratio(보상 비율)나 deductible(공제) 중 적어도 하나,
+  type=rate 면 ratio, type=fixed 면 fixed_amount. 원문의 '…의 50%' 는 ratio, '…을 뺀 금액' 은 deductible.
+  한도만 보이면 같은 조에서 보상 비율·공제 문구를 다시 찾아 쓴다.
 
 {body}"""
 
@@ -90,6 +94,7 @@ class SectionExtraction(BaseModel):
     risks: list[Risk] = Field(default_factory=list)
     exclusions: list[Exclusion] = Field(default_factory=list)
     coverage_codes: list[CoverageCode] = Field(default_factory=list)
+    dropped: list[str] = Field(default_factory=list)  # 형식이 틀려 뺀 항목 (salvage_section)
 
 
 def _slug(text: str) -> str:
@@ -148,6 +153,57 @@ def assemble(doc: TermsDocument, results: list[tuple[Bundle, SectionExtraction]]
 DEFAULT_WORKERS = 6  # 묶음을 동시에 보내는 수
 
 
+def _first_error(e: ValidationError) -> str:
+    err = e.errors()[0]
+    return str(err.get("msg", e))[:150]
+
+
+def salvage_section(text: str) -> SectionExtraction:
+    """형식이 틀린 응답에서 맞는 규칙·보상 제외·담보코드만 살림 (틀린 항목은 dropped 에 남김)."""
+    data = json.loads(extract_json(text))
+    dropped: list[str] = []
+    codes = []
+    for c in data.get("coverage_codes") or []:
+        try:
+            codes.append(CoverageCode.model_validate(c))
+        except ValidationError as e:
+            dropped.append(f"담보코드 {c.get('code')}: {_first_error(e)}")
+    code_ids = {c.code for c in codes}
+    risks = []
+    for r in data.get("risks") or []:
+        rules = []
+        for rule in r.get("rules") or []:
+            try:
+                rules.append(BenefitRule.model_validate(rule).model_dump())
+            except ValidationError as e:
+                dropped.append(f"규칙 {rule.get('name')}: {_first_error(e)}")
+        if not rules:
+            continue
+        try:
+            risk = Risk.model_validate({**r, "rules": rules})
+        except ValidationError as e:
+            dropped.append(f"위험 {r.get('id')}: {_first_error(e)}")
+            continue
+        if risk.coverage_code and risk.coverage_code not in code_ids:
+            risk.coverage_code = None
+        risks.append(risk)
+    exclusions = []
+    for x in data.get("exclusions") or []:
+        try:
+            ex = Exclusion.model_validate(x)
+        except ValidationError as e:
+            dropped.append(f"보상 제외 {x.get('description')}: {_first_error(e)}")
+            continue
+        if ex.coverage_code and ex.coverage_code not in code_ids:
+            ex.coverage_code = None
+        exclusions.append(ex)
+    if not (risks or exclusions):
+        raise ValueError("살릴 수 있는 항목이 없습니다.")
+    return SectionExtraction(
+        risks=risks, exclusions=exclusions, coverage_codes=codes, dropped=dropped
+    )
+
+
 def extract_sections(
     bundles: list[Bundle],
     llm: OpenAIClient | None = None,
@@ -166,7 +222,12 @@ def extract_sections(
 
     def run(i: int, bundle: Bundle) -> SectionExtraction:
         with span("step", f"사고보장 추출 {i}/{len(bundles)}", input={"bundle": bundle.key}) as s:
-            result = ask_json(agent, PROMPT.format(body=bundle.render()), SectionExtraction)
+            result = ask_json(
+                agent,
+                PROMPT.format(body=bundle.render()),
+                SectionExtraction,
+                salvage=salvage_section,
+            )
             s.set(output={"risks": len(result.risks), "exclusions": len(result.exclusions)})
         return result
 
@@ -213,8 +274,17 @@ def extract_coverage(
     if not results:
         raise ExtractionError(f"모든 묶음 추출에 실패했습니다: {next(iter(errors.values()))}")
     report = ground_product(assemble(doc, results), doc)
-    report.issues += failed_issues(errors)
+    report.issues += failed_issues(errors) + dropped_issues(results)
     return report
+
+
+def dropped_issues(results: list[tuple[Bundle, SectionExtraction]]) -> list[GroundingIssue]:
+    """형식이 틀려 빠진 항목 (묶음은 살림)."""
+    return [
+        GroundingIssue(severity="warning", code="PARTIAL_EXTRACTION", target=b.key, message=m)
+        for b, r in results
+        for m in r.dropped
+    ]
 
 
 def failed_issues(errors: dict[str, str]) -> list[GroundingIssue]:

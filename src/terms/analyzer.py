@@ -114,10 +114,20 @@ def extract_json(text: str) -> str:
     return text[start : end + 1]
 
 
-def ask_json(agent: Agent, prompt: str, model: type[M], retries: int = JSON_RETRIES) -> M:
-    """JSON 응답을 받아 model 로 검사. 틀리면 에러 내용을 알려주고 다시 받음."""
+def ask_json(
+    agent: Agent,
+    prompt: str,
+    model: type[M],
+    retries: int = JSON_RETRIES,
+    salvage: Callable[[str], M] | None = None,
+) -> M:
+    """JSON 응답을 받아 model 로 검사. 틀리면 에러 내용을 알려주고 다시 받음.
+
+    salvage: 재시도를 다 써도 틀리면 마지막 응답을 넘겨 살릴 수 있는 부분만 살림 (실패하면 에러).
+    """
     history = [AgentMessage(role="user", content=prompt)]
     last_error = ""
+    last_output = ""
     for _ in range(retries + 1):
         result = agent.run(history)
         if result.stop_reason != "end":
@@ -129,6 +139,7 @@ def ask_json(agent: Agent, prompt: str, model: type[M], retries: int = JSON_RETR
                     else ""
                 )
             )
+        last_output = result.output
         try:
             return model.model_validate_json(extract_json(result.output))
         except (ValidationError, ValueError) as e:
@@ -140,6 +151,11 @@ def ask_json(agent: Agent, prompt: str, model: type[M], retries: int = JSON_RETR
                     "형식에 맞는 JSON 하나만 다시 출력해.",
                 )
             ]
+    if salvage and last_output:
+        try:
+            return salvage(last_output)
+        except (ValidationError, ValueError):
+            pass
     raise AnalysisError(f"{retries + 1}번 시도했지만 올바른 JSON 을 받지 못했습니다: {last_error}")
 
 
