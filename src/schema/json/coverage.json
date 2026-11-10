@@ -1,0 +1,200 @@
+{
+  "coverage_id": {
+    "type": "string",
+    "description": "보장의 ID - ID생성규칙?"
+  },
+  "coverage_name": {
+    "type": "string",
+    "description": "보장명칭"
+  },
+  "insured_role": {
+    "type": "string",
+    "description": "피보험자의 종류(주피보험자,종피보험자)"
+  },
+  "claim_reason": {
+    "type": ["string", "null"],
+    "description": "청구사유",
+    "enum": ["사망", "장해", "수술", "입원", "판단불가", null]
+  },
+  "kcd_code_patterns": {
+    "type": "array",
+    "description": "보장하는 KCD코드를 표현한 정규식 목록",
+    "items": {
+      "type": "string",
+      "format": "regex"
+    }
+  },
+  "contract_exemption_days": {
+    "type": ["integer", "null"],
+    "description": "계약일부터 보험금을 지급하지 않는 면책일수 (예: 90) - 없으면 null",
+    "minimum": 0
+  },
+  "indemnity": {
+    "type": ["object", "null"],
+    "description": "실손보장에서 사용하는 항목 정의 (실손이 아닌 보장은 null)",
+    "properties": {
+      "generation": {
+        "type": ["string", "null"],
+        "description": "실손 세대",
+        "enum": ["1세대", "2세대", "3세대", "4세대", "5세대", "판단불가", null]
+      },
+      "rules": {
+        "type": "array",
+        "description": "구분별 보상 규칙",
+        "items": {
+          "type": "object",
+          "properties": {
+            "care_type": {
+              "type": ["string", "null"],
+              "description": "입원/통원 구분",
+              "enum": ["입원", "통원", "판단불가", null]
+            },
+            "benefit_category": {
+              "type": ["string", "null"],
+              "description": "급여/비급여 구분",
+              "enum": ["급여", "비급여", "도수·체외충격파·증식", "비급여주사", "비급여MRI", "판단불가", null]
+            },
+            "covered_ratio": {
+              "type": ["number", "null"],
+              "description": "보장대상비율 (0~1)",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "min_deductible_amounts": {
+              "type": ["object", "null"],
+              "description": "최소공제금액 (원)",
+              "additionalProperties": { "type": "number", "minimum": 0 }
+            },
+            "annual_limit_amount": {
+              "type": ["number", "null"],
+              "description": "연간 한도금액 (원)",
+              "minimum": 0
+            },
+            "per_visit_limit_amount": {
+              "type": ["number", "null"],
+              "description": "통원 회당 한도금액 (원)",
+              "minimum": 0
+            },
+            "daily_limit_amount": {
+              "type": ["number", "null"],
+              "description": "1일 한도금액 (원) - 상급병실료 등",
+              "minimum": 0
+            },
+            "annual_visit_limit": {
+              "type": ["integer", "null"],
+              "description": "연간 횟수 한도",
+              "minimum": 0
+            },
+            "annual_copay_cap_amount": {
+              "type": ["number", "null"],
+              "description": "연간 자기부담 상한 (원) - 없으면 null",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  },
+  "admission": {
+    "type": ["object", "null"],
+    "description": "입원일당(정액형 입원비) 항목 정의 (입원일당이 아닌 보장은 null)",
+    "properties": {
+      "deductible_days": {
+        "type": ["integer", "null"],
+        "description": "면책일수 (예: 3일 초과 지급이면 3, 1일 이상 지급이면 0)",
+        "minimum": 0
+      },
+      "max_days_per_admission": {
+        "type": ["integer", "null"],
+        "description": "1회 입원당 최대 지급일수 (예: 120, 180)",
+        "minimum": 0
+      },
+      "exemption_period_days": {
+        "type": ["integer", "null"],
+        "description": "1회 입원 한도 소진 후 재입원 면책기간 (일, 예: 180)",
+        "minimum": 0
+      }
+    }
+  },
+  "benefits": {
+    "type": "array",
+    "description": "보험금에 대한 정의",
+    "items": {
+      "type": "object",
+      "properties": {
+        "benefit_code": {
+          "type": "string",
+          "description": "보험금코드"
+        },
+        "benefit_name": {
+          "type": "string",
+          "description": "보험금 명칭"
+        },
+        "benefit_description": {
+          "type": "string",
+          "description": "보험금 설명"
+        },
+        "calc_tool_name": {
+          "type": "string",
+          "description": "보험금을 계산하는 tool명"
+        }
+      }
+    }
+  },
+  "pgm_review_items": {
+    "type": "array",
+    "description": "프로그램이 판단하는 조건",
+    "items": {
+      "type": "object",
+      "properties": {
+        "pgm_review_code": {
+          "type": "string",
+          "description": ""
+        },
+        "pgm_review_name": {
+          "type": "string",
+          "description": ""
+        },
+        "pgm_review_description": {
+          "type": "string",
+          "description": ""
+        },
+        "tool": {
+          "type": "object",
+          "description": "이 조건을 체크하기 위해 호출해야되는 tool과 input에 대한 정보",
+          "properties": {
+            "tool_name": {
+              "type": "string",
+              "description": "호출할 tool의 이름"
+            },
+            "tool_pgm": {
+              "type": "string",
+              "description": "호출할 tool의 pgm명"
+            }
+          }
+        }
+      }
+    }
+  },
+  "ai_review_items": {
+    "type": "array",
+    "description": "AI가 판단해야하는 조건이 정의",
+    "items": {
+      "type": "object",
+      "properties": {
+        "ai_review_code": {
+          "type": "string",
+          "description": "AI리뷰코드"
+        },
+        "ai_review_name": {
+          "type": "string",
+          "description": "AI리뷰코드명"
+        },
+        "ai_review_description": {
+          "type": "string",
+          "description": "이 조건을 판단하는 방법이 설명되었는 항목"
+        }
+      }
+    }
+  }
+}

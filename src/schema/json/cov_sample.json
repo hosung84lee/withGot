@@ -1,0 +1,154 @@
+[
+  {
+    "coverage_id": "SL-ICA2404-MAIN-MINOR-CANCER-DX-24",
+    "coverage_name": "소액암진단 24% (초기유방암·경계성종양·중증 이외 갑상선암) (주계약)",
+    "insured_role": "주피보험자",
+    "claim_reason": "진단",
+    "kcd_code_patterns": [
+      "^C50(\\.[0-9]{1,2})?$",
+      "^D(3[7-9]|4[0-4])(\\.[0-9]{1,2})?$",
+      "^D47\\.[0279][0-9]?$",
+      "^D48(\\.[0-9]{1,2})?$",
+      "^C73(\\.[0-9]{1,2})?$"
+    ],
+    "contract_exemption_days": null,
+    "indemnity": null,
+    "admission": null,
+    "benefits": [
+      {
+        "benefit_code": "MAIN-MINOR-DX-24",
+        "benefit_name": "소액암진단보험금",
+        "benefit_description": "초기유방암·경계성종양·중증 이외 갑상선암 진단확정 시 각 1회. 최초계약일부터 1년 초과 보험가입금액의 24%, 1년 이내 12%.",
+        "calc_tool_name": "calc_fixed_ratio_benefit"
+      }
+    ],
+    "pgm_review_items": [
+      {
+        "pgm_review_code": "PGM-START",
+        "pgm_review_name": "보장개시일 확인 (면책기간 없음)",
+        "pgm_review_description": "소액암 보장개시일은 계약일(부활 시 부활일, 갱신계약은 갱신일). 진단확정일이 보장개시일 이후인지만 확인 — 90일 면책 미적용.",
+        "tool": {
+          "tool_name": "check_coverage_start"
+        }
+      },
+      {
+        "pgm_review_code": "PGM-PRIOR",
+        "pgm_review_name": "소액암진단보험금 기지급 이력",
+        "pgm_review_description": "최초계약 보장개시일 이후 이 보장으로 지급된 분류질병 목록과 각 지급사유 발생일을 반환한다. 3개 분류질병(초기유방암, 경계성종양, 중증 이외 갑상선암)이 모두 기지급이면 한도 초과(단, PGM-RESET-5Y 대상이면 보류).",
+        "tool": {
+          "tool_name": "check_prior_payment"
+        }
+      },
+      {
+        "pgm_review_code": "PGM-RESET-5Y",
+        "pgm_review_name": "갱신 후 5년 재보장 기간 경과 여부",
+        "pgm_review_description": "기지급된 분류질병별로, 그 지급이 갱신계약 보장개시일 전일 이전 진단분이면 지급사유 발생 후 최초 갱신계약 보장개시일부터 5년이 지났는지 날짜로만 계산해 분류질병별 경과 여부를 반환한다.",
+        "tool": {
+          "tool_name": "check_reset_window"
+        }
+      }
+    ],
+    "ai_review_items": [
+      {
+        "ai_review_group": 1,
+        "ai_review_code": "AI-DX-DATE",
+        "ai_review_name": "진단확정일 판정",
+        "ai_review_description": "검사 결과보고 시점을 진단확정일로 판정한다. 병리진단이 불가능했던 경우(급속 악화로 사망, 조직채취가 생명에 위험)는 진단·치료를 증명하는 문서화된 기록이 있는지 확인한다. 보험기간 중 사망 후 해당 질병을 직접 원인으로 사망한 사실이 확인된 경우 사망일을 진단확정일로 본다. 진단확정일을 특정할 수 있으면 통과."
+      },
+      {
+        "ai_review_group": 2,
+        "ai_review_code": "AI-CAT-EARLY-BREAST",
+        "ai_review_name": "초기유방암 해당",
+        "ai_review_description": "C50이면서 TNM 해부병기 서류상 AJCC 제8판(진단 시점 적용판) 1기 — T1N0M0, T0N1miM0, T1N1miM0 — 이면 통과(다발 병소는 가장 높은 T병기로 판정). 병리과 또는 진단검사의학과 전문의가 조직검사·미세바늘흡인생검·혈액검사의 현미경 소견으로 진단. 전암상태는 미해당. D05(유방 제자리암)는 미해당(제자리암)."
+      },
+      {
+        "ai_review_group": 2,
+        "ai_review_code": "AI-CAT-BORDERLINE",
+        "ai_review_name": "경계성종양 해당",
+        "ai_review_description": "D37~D44, D47.0·D47.2·D47.7·D47.9, D48이면서 병리과 전문의가 조직검사 또는 미세바늘흡인생검(혈액검사 불인정)의 현미경 소견으로 진단이면 통과."
+      },
+      {
+        "ai_review_group": 2,
+        "ai_review_code": "AI-CAT-NONSEVERE-THYROID",
+        "ai_review_name": "중증 이외 갑상선암 해당",
+        "ai_review_description": "C73이면서 병리 조직형이 수질성암·역형성암이 아니면(유두암·여포암 등) 통과. 병리과 또는 진단검사의학과 전문의가 조직검사·미세바늘흡인생검·혈액검사의 현미경 소견으로 진단. 전암상태는 미해당. 조직형 기재가 없으면 판단불가."
+      }
+    ]
+  },
+  {
+    "coverage_id": "SL-ICA2404-MAIN-MINOR-CANCER-DX-12",
+    "coverage_name": "소액암진단 12% (제자리암·기타피부암·비침습 방광암·대장점막내암) (주계약)",
+    "insured_role": "주피보험자",
+    "claim_reason": "진단",
+    "kcd_code_patterns": [
+      "^D0[0-7](\\.[0-9]{1,2})?$",
+      "^D09(\\.[0-9]{1,2})?$",
+      "^C44(\\.[0-9]{1,2})?$",
+      "^C67(\\.[0-9]{1,2})?$",
+      "^D09\\.0[0-9]?$",
+      "^C(18|19|20)(\\.[0-9]{1,2})?$",
+      "^D01\\.[0-2][0-9]?$"
+    ],
+    "contract_exemption_days": null,
+    "indemnity": null,
+    "admission": null,
+    "benefits": [
+      {
+        "benefit_code": "MAIN-MINOR-DX-12",
+        "benefit_name": "소액암진단보험금",
+        "benefit_description": "제자리암·기타피부암·비침습 방광암·대장점막내암 진단확정 시 각 1회. 최초계약일부터 1년 초과 보험가입금액의 12%, 1년 이내 6%. 비침습 방광암·대장점막내암에 해당하면 제자리암으로는 지급하지 않음.",
+        "calc_tool_name": "calc_fixed_ratio_benefit"
+      }
+    ],
+    "pgm_review_items": [
+      {
+        "pgm_review_code": "PGM-START",
+        "pgm_review_name": "보장개시일 확인 (면책기간 없음)",
+        "pgm_review_description": "소액암 보장개시일은 계약일(부활 시 부활일, 갱신계약은 갱신일). 진단확정일이 보장개시일 이후인지만 확인 — 90일 면책 미적용.",
+        "tool": {
+          "tool_name": "check_coverage_start"
+        }
+      },
+      {
+        "pgm_review_code": "PGM-RESET-5Y",
+        "pgm_review_name": "갱신 후 5년 재보장 기간 경과 여부",
+        "pgm_review_description": "기지급된 분류질병별로, 그 지급이 갱신계약 보장개시일 전일 이전 진단분이면 지급사유 발생 후 최초 갱신계약 보장개시일부터 5년이 지났는지 날짜로만 계산해 분류질병별 경과 여부를 반환한다.",
+        "tool": {
+          "tool_name": "check_reset_window"
+        }
+      }
+    ],
+    "ai_review_items": [
+      {
+        "ai_review_group": 1,
+        "ai_review_code": "AI-DX-DATE",
+        "ai_review_name": "진단확정일 판정",
+        "ai_review_description": "검사 결과보고 시점을 진단확정일로 판정한다. 병리진단이 불가능했던 경우(급속 악화로 사망, 조직채취가 생명에 위험)는 진단·치료를 증명하는 문서화된 기록이 있는지 확인한다. 보험기간 중 사망 후 해당 질병을 직접 원인으로 사망한 사실이 확인된 경우 사망일을 진단확정일로 본다. 진단확정일을 특정할 수 있으면 통과."
+      },
+      {
+        "ai_review_group": 2,
+        "ai_review_code": "AI-CAT-CIS",
+        "ai_review_name": "제자리암 해당",
+        "ai_review_description": "D00~D07, D09이면서 병리과 전문의가 조직검사 또는 미세바늘흡인생검(혈액검사 불인정)의 현미경 소견으로 진단이면 통과. 단 비침습 방광암(D09.0 중 TaN0M0) 또는 대장점막내암(D01.0~D01.2 중 점막내 침범)에 해당하면 미해당."
+      },
+      {
+        "ai_review_group": 2,
+        "ai_review_code": "AI-CAT-OTHER-SKIN",
+        "ai_review_name": "기타피부암 해당",
+        "ai_review_description": "C44이면서 병리과 또는 진단검사의학과 전문의가 조직검사·미세바늘흡인생검·혈액검사의 현미경 소견으로 진단이면 통과. 전암상태는 미해당."
+      },
+      {
+        "ai_review_group": 2,
+        "ai_review_code": "AI-CAT-NONINVASIVE-BLADDER",
+        "ai_review_name": "비침습 방광암 해당",
+        "ai_review_description": "C67 또는 D09.0이면서 이행상피세포층 기원 비침습 유두암이 고유층(lamina propria)을 침범하지 않은 AJCC TaN0M0이면 통과. 병리과 전문의가 조직검사 또는 미세바늘흡인생검(혈액검사 불인정)의 현미경 소견으로 진단."
+      },
+      {
+        "ai_review_group": 2,
+        "ai_review_code": "AI-CAT-COLON-MUCOSAL",
+        "ai_review_name": "대장점막내암 해당",
+        "ai_review_description": "C18~C20 또는 D01.0~D01.2(맹장·충수·결장·직장)이면서 악성종양세포가 기저막을 뚫고 점막고유층 또는 점막근층까지 침범했으나 점막하층은 침범하지 않았으면 통과. 병리과 전문의가 조직검사 또는 미세바늘흡인생검(혈액검사 불인정)의 현미경 소견으로 진단."
+      }
+    ]
+  }
+]
