@@ -5,7 +5,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from app import coverage_view, terms_viewer
+from app import compare_view, coverage_view, terms_viewer
 from backend.config import get_settings
 from backend.storage import get_document, list_documents
 from coverage_extract.extractor import failed_issues
@@ -31,36 +31,52 @@ with st.sidebar:
     extract = st.toggle(
         "AI 사고보장 추출",
         value=True,
-        help="보장 조를 보장종목 단위로 묶어 OpenAI 로 지급 규칙·보상 제외를 뽑습니다 "
-        "(묶음 동시 처리, API 비용). 끄면 구조화와 구조 검증만 합니다. 결과는 캐시되어 보장맵에서도 씁니다.",
+        help="정답 데이터·캐시에 없는 보장 묶음을 OpenAI 로 추출합니다 (묶음 동시 처리, API 비용). "
+        "끄면 API 를 부르지 않고, 정답 데이터·이전 추출 결과만 보여 줍니다. 결과는 보장맵과 같이 씁니다.",
     )
     model = st.text_input("OpenAI 모델", value=settings.openai_model, disabled=not extract)
 
-tab_file, tab_text, tab_doc, tab_sample = st.tabs(
-    ["파일 올리기", "텍스트 붙여넣기", "문서 보관함", "샘플 약관 구조 뷰어"]
+tab_file, tab_text, tab_doc, tab_sample, tab_compare = st.tabs(
+    ["파일 올리기", "텍스트 붙여넣기", "문서 보관함", "샘플 약관 구조 뷰어", "약관 비교 (스키마)"]
 )
 run_args: dict | None = None
+
+with tab_compare:
+    compare_view.render(model=model)
 cache_key: str | None = None
 
 
 with tab_sample:
     pdfs = terms_viewer.sample_pdfs()
     st.caption(
-        f"삼성생명 약관 PDF {len(pdfs)}개를 구조화·검증한 결과입니다 (LLM 없음). "
-        "원문 분류 지도, 조 트리, 인용, 검증 결과를 볼 수 있습니다."
+        f"삼성생명 약관 PDF {len(pdfs)}개. 골라서 분석하면 올린 파일과 똑같이 구조화 → 사고보장 데이터까지 "
+        "만듭니다. 정답 데이터·이전 AI 추출 결과가 있으면 API 없이 바로 나옵니다."
     )
-    have = terms_viewer.SAMPLE_HTML.exists()
-    if st.button("다시 만들기" if have else "뷰어 만들기", disabled=not pdfs):
-        with st.status("약관 PDF 구조화 중… (큰 약관 하나에 1분 안팎)", expanded=True) as s:
-            terms_viewer.build_sample_html(lambda i, n, name: st.write(f"▶ {i + 1}/{n} {name}"))
-            s.update(label="완료", state="complete", expanded=False)
-        have = True
-    if have:
-        st.iframe(terms_viewer.SAMPLE_HTML, height=VIEWER_HEIGHT)
-    elif not pdfs:
-        st.info(f"약관 PDF 가 없습니다: {terms_viewer.PDF_DIR}")
+    if pdfs:
+        c1, c2 = st.columns([4, 1])
+        pick = c1.selectbox(
+            "샘플 약관", pdfs, format_func=lambda p: p.stem, label_visibility="collapsed"
+        )
+        if c2.button("분석", type="primary", key="sample_run", width="stretch"):
+            raw = pick.read_bytes()
+            with st.spinner(f"{pick.name} 텍스트 추출 중… (처음 한 번은 1분 안팎)"):
+                t0 = time.time()
+                text = policy.policy_text(raw)
+                st.session_state.terms_viewer_extract_s = time.time() - t0
+            run_args = {"text": text, "source": pick.name}
+            cache_key = policy.file_hash(raw)
+            st.session_state.terms_viewer_pages = terms_viewer.pdf_pages(raw)
     else:
-        st.info("아직 만든 뷰어가 없습니다. '뷰어 만들기' 를 누르세요.")
+        st.info(f"약관 PDF 가 없습니다: {terms_viewer.PDF_DIR}")
+    with st.expander("샘플 7개 구조 뷰어 한꺼번에 보기 (파서 수정 전후 비교)"):
+        have = terms_viewer.SAMPLE_HTML.exists()
+        if st.button("다시 만들기" if have else "뷰어 만들기", disabled=not pdfs):
+            with st.status("약관 PDF 구조화 중…", expanded=True) as s:
+                terms_viewer.build_sample_html(lambda i, n, name: st.write(f"▶ {i + 1}/{n} {name}"))
+                s.update(label="완료", state="complete", expanded=False)
+            have = True
+        if have:
+            st.iframe(terms_viewer.SAMPLE_HTML, height=VIEWER_HEIGHT)
 
 with tab_text, st.form("terms_text"):
     text = st.text_area("약관 원문", height=300, placeholder="제1조(목적) ...")
@@ -143,29 +159,45 @@ if run_args:
         coverage: GroundingReport | None = None
         note = ""
         failed = False
-        if extract:
-            on_step(2, "AI 사고보장 추출")
-            keys = [b.key for b in policy.bundles(terms_doc)]
-            if not keys:
-                note = "보장 조(보상내용·보험금의 지급사유 등)를 찾지 못해 추출할 묶음이 없습니다."
-            elif not settings.openai_api_key:
+        errors: dict[str, str] = {}
+        golden = policy.golden_for(terms_doc)
+        keys = [b.key for b in policy.bundles(terms_doc)]
+        todo = [k for k in keys if k not in policy.golden_keys(terms_doc, golden)]
+        todo = [k for k in todo if k not in policy.cached_sections(cache_key)]
+        if extract and todo:
+            on_step(2, f"AI 사고보장 추출 (남은 묶음 {len(todo)}개)")
+            if not settings.openai_api_key:
                 note = ".env 에 OPENAI_API_KEY 가 없어 AI 사고보장 추출을 하지 못했습니다."
-                failed = True
             else:
                 errors = policy.extract_missing(
                     cache_key,
                     terms_doc,
-                    keys,
+                    todo,
                     model=model or None,
                     on_progress=lambda i, n, b: st.write(f"　· 묶음 {i}/{n} 끝: {b.key}"),
                 )
-                product = policy.build_product(terms_doc, cache_key, use_golden=False)
-                if product:
-                    coverage = policy.ground(product, terms_doc)
-                    coverage.issues += failed_issues(errors) + policy.dropped_issues(cache_key)
-                failed = bool(errors)
-                if errors and not product:
-                    note = "모든 묶음 추출에 실패했습니다: " + next(iter(errors.values()))[:300]
+        elif extract:
+            on_step(2, "사고보장 데이터 (정답 데이터·캐시 사용, API 호출 없음)")
+        product = policy.build_product(terms_doc, cache_key, golden)
+        if product:
+            coverage = policy.ground(product, terms_doc)
+            coverage.issues += failed_issues(errors) + policy.dropped_issues(cache_key)
+        failed = bool(errors) or (extract and bool(todo) and not settings.openai_api_key)
+        if not keys:
+            note = "보장 조(보상내용·보험금의 지급사유 등)를 찾지 못해 사고보장 묶음이 없습니다."
+        elif errors and not product:
+            note = "모든 묶음 추출에 실패했습니다: " + next(iter(errors.values()))[:300]
+        elif not extract and todo:
+            note = f"AI 사고보장 추출이 꺼져 있어 묶음 {len(todo)}개는 빠졌습니다" + (
+                " (정답 데이터·캐시만 표시)." if product else "."
+            )
+        source_info = []
+        if golden:
+            source_info.append("정답 초안" if policy.is_draft(golden) else "정답 데이터(사람 검토)")
+        n_cached = len(policy.cached_sections(cache_key))
+        if n_cached:
+            source_info.append(f"AI 추출 {n_cached}묶음")
+        st.session_state.terms_coverage_source = " + ".join(source_info)
         progress.progress(1.0)
         status.update(
             label="완료" + (" (일부 실패)" if failed else ""),
@@ -234,7 +266,7 @@ if coverage_note:
     st.info(coverage_note)
 
 t_viewer, t_cov, t_tables, t_struct, t_valid, t_raw = st.tabs(
-    ["구조 뷰어", "사고보장 (AI 추출)", "사고보장 테이블", "조 목록", "검증", "JSON"]
+    ["구조 뷰어", "사고보장 데이터", "사고보장 테이블", "조 목록", "검증", "JSON"]
 )
 
 with t_viewer:
@@ -246,8 +278,14 @@ with t_viewer:
 
 with t_cov:
     if not product:
-        st.info(coverage_note or "사이드바에서 'AI 사고보장 추출' 을 켜고 다시 분석하세요.")
+        st.info(
+            coverage_note
+            or "사고보장 데이터가 없습니다. 'AI 사고보장 추출' 을 켜고 다시 분석하세요."
+        )
     else:
+        src_info = st.session_state.get("terms_coverage_source", "")
+        if src_info:
+            st.markdown(f"**데이터 출처:** {src_info}")
         st.caption(
             "✅ = 인용문·숫자가 약관 원문에서 확인됨 · 🟡 = 검토 필요. "
             "확인됨은 '원문에 근거 있음' 이지 업무 검토 완료가 아닙니다."

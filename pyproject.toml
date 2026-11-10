@@ -12,6 +12,7 @@ dependencies = [
     "mcp>=2.0",
     "openai>=3.46.0",
     "pypdf>=7.0.0",
+    "jsonschema>=4.23",
 ]
 
 [dependency-groups]
@@ -27,6 +28,7 @@ packages = [
     "src/backend",
     "src/schema",
     "src/coverage_map",
+    "src/coverage_json",
     "src/workflow",
     "src/agent",
     "src/mcp_server",

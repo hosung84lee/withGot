@@ -1,198 +1,1002 @@
 {
-  "coverage_id": {
-    "type": "string",
-    "description": "보장의 ID - ID생성규칙?"
-  },
-  "coverage_name": {
-    "type": "string",
-    "description": "보장명칭"
-  },
-  "insured_role": {
-    "type": "string",
-    "description": "피보험자의 종류(주피보험자,종피보험자)"
-  },
-  "claim_reason": {
-    "type": ["string", "null"],
-    "description": "청구사유",
-    "enum": ["사망", "장해", "수술", "입원", "판단불가", null]
-  },
-  "kcd_code_patterns": {
-    "type": "array",
-    "description": "보장하는 KCD코드를 표현한 정규식 목록",
-    "items": {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/hosung84lee/withGot/src/schema/json/coverage.json",
+  "title": "보장 항목 (coverage)",
+  "description": "약관에서 뽑아낸 보장 하나. 보장 = 약관(주계약·특약) 안의 보험금 지급사유 하나(또는 같은 조건을 공유하는 묶음). 샘플 약관 7개(실손 2601·2605, 암치료플러스종신, 인터넷비갱신암, 인터넷암 2404, 유니버설종신 납입한도변경특약, 중증간병연금전환특약) 분석으로 보완 (2026-11-11). 초안 필드 이름은 그대로 두고 추가만 함.",
+  "type": "object",
+  "required": [
+    "coverage_id",
+    "coverage_name",
+    "insured_role",
+    "claim_reason",
+    "benefits"
+  ],
+  "properties": {
+    "coverage_id": {
       "type": "string",
-      "format": "regex"
-    }
-  },
-  "contract_exemption_days": {
-    "type": ["integer", "null"],
-    "description": "계약일부터 보험금을 지급하지 않는 면책일수 (예: 90) - 없으면 null",
-    "minimum": 0
-  },
-  "indemnity": {
-    "type": ["object", "null"],
-    "description": "실손보장에서 사용하는 항목 정의 (실손이 아닌 보장은 null)",
-    "properties": {
-      "generation": {
-        "type": ["string", "null"],
-        "description": "실손 세대",
-        "enum": ["1세대", "2세대", "3세대", "4세대", "5세대", "판단불가", null]
-      },
-      "rules": {
-        "type": "array",
-        "description": "구분별 보상 규칙",
-        "items": {
-          "type": "object",
+      "description": "보장 ID. 규칙: {회사}-{상품코드}-{약관코드}-{보장종목코드(없으면 생략)}-{보장코드}. 대문자·숫자·하이픈. 예: SL-ICA2404-MAIN-MINOR-CANCER-DX-24 (SL=삼성생명, ICA2404=인터넷암 2404, MAIN=주계약). 같은 약관을 다시 뽑아도 같은 ID가 나와야 개정 비교에 쓸 수 있음.",
+      "pattern": "^[A-Z0-9]+(-[A-Z0-9]+)+$"
+    },
+    "coverage_name": {
+      "type": "string",
+      "description": "보장명칭 (약관 표기 그대로 + 구분이 필요하면 괄호로 보충). 예: 소액암진단 24% (초기유방암·경계성종양·중증 이외 갑상선암) (주계약)"
+    },
+    "insured_role": {
+      "type": "string",
+      "description": "피보험자의 종류",
+      "enum": [
+        "주피보험자",
+        "종피보험자",
+        "태아",
+        "판단불가"
+      ]
+    },
+    "claim_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "청구사유. 초안 enum 에 진단·통원·치료·간병·생존·납입면제·의료비 추가 (샘플 약관에 실제로 나옴). 실손은 '의료비' 로 두고 입원/통원은 indemnity.rules[].care_type 으로 나눔.",
+      "enum": [
+        "사망",
+        "장해",
+        "진단",
+        "수술",
+        "입원",
+        "통원",
+        "치료",
+        "간병",
+        "생존",
+        "납입면제",
+        "의료비",
+        "판단불가",
+        null
+      ]
+    },
+    "policy": {
+      "type": "object",
+      "description": "이 보장이 속한 약관(상품·주계약/특약). 추가(권장, 초안 예시와 호환 위해 필수 아님): 같은 보장명이 주계약과 특약에 따로 있고(예: 암사망특약Ⅱ, 고액치료비암진단특약), 비교·ID 생성에 약관 단위가 필요함.",
+      "required": [
+        "policy_name",
+        "policy_kind"
+      ],
+      "properties": {
+        "product_name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "상품명. 예: 삼성 인터넷암보험(2404)(갱신형,무배당)"
+        },
+        "policy_name": {
+          "type": "string",
+          "description": "약관명 (약관 제목 줄 그대로). 예: 삼성 인터넷암보험(2404)(갱신형,무배당) 고액치료비암진단특약Ⅱ 약관"
+        },
+        "policy_kind": {
+          "type": "string",
+          "description": "주계약 / 보장성 특약 / 제도성 특약(보장 없음: 지정대리청구·장애인전용전환·실손 중지재개·납입한도변경·계약승계 등) / 부담보·제한 특약(특정신체부위·질병 보장제한, 이륜차 부담보 등)",
+          "enum": [
+            "주계약",
+            "보장특약",
+            "제도특약",
+            "부담보특약"
+          ]
+        },
+        "section": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "보장종목 (실손 《질병급여형》《상해비급여형》《3대비급여형》《비급여자기공명영상진단형》 등). 없으면 null"
+        },
+        "renewal": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "갱신 구분",
+          "enum": [
+            "갱신형",
+            "비갱신형",
+            "판단불가",
+            null
+          ]
+        },
+        "policy_version": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "개정일 등. 예: 2026-09-23"
+        }
+      }
+    },
+    "kcd_code_patterns": {
+      "type": "array",
+      "description": "보장하는 KCD코드를 표현한 정규식 목록 (분류표 별표에서). 진단·사망·치료처럼 질병 범위가 있는 보장만. 예: ^C50(\\.[0-9]{1,2})?$",
+      "items": {
+        "type": "string",
+        "format": "regex"
+      }
+    },
+    "kcd_exclude_patterns": {
+      "type": "array",
+      "description": "추가: kcd_code_patterns 에 들지만 제외하는 코드 (예: 일반 '암' 에서 C44 기타피부암·C73 중 중증 이외 갑상선암 제외). 코드만으로 못 가르는 제외(초기유방암 = C50 중 TNM 1기 등)는 ai_review_items 로.",
+      "items": {
+        "type": "string",
+        "format": "regex"
+      }
+    },
+    "kcd_source": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "추가: KCD 범위의 근거 별표. 예: 별표2 악성신생물 분류표(기타피부암, 초기유방암, 중증 이외 갑상선암, 비침습 방광암 및 대장점막내암 제외)"
+    },
+    "sex_restrictions": {
+      "type": "array",
+      "description": "추가: 성별 한정 (인터넷암 2404: 자궁암은 여성, 전립선암은 남성인 경우에 한함)",
+      "items": {
+        "type": "object",
+        "required": [
+          "kcd_code_patterns",
+          "sex"
+        ],
+        "properties": {
+          "kcd_code_patterns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "regex"
+            }
+          },
+          "sex": {
+            "type": "string",
+            "enum": [
+              "남성",
+              "여성"
+            ]
+          }
+        }
+      }
+    },
+    "contract_exemption_days": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "계약일부터 보험금을 지급하지 않는 면책일수 (예: 90) - 없으면 null. 세부 규칙(갱신·부활·기준일)은 coverage_start 에.",
+      "minimum": 0
+    },
+    "coverage_start": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "추가: 보장개시 규칙. 암보장개시일(계약일+90일, 갱신계약은 갱신일, 부활은 부활일+90일), 재진단암(직전 진단 확정일+2년), 사후정리특약(주계약 보장개시일+2년), 중증간병연금전환(연금전환일) 등 보장마다 다름.",
+      "properties": {
+        "basis": {
+          "type": "string",
+          "description": "기산일",
+          "enum": [
+            "계약일",
+            "최초계약일",
+            "주계약보장개시일",
+            "직전진단확정일",
+            "연금전환일",
+            "연금지급개시일",
+            "판단불가"
+          ]
+        },
+        "waiting_days": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "기산일부터 보장하지 않는 일수 (그 날 포함 N일이 지난 날의 다음 날부터 보장). 예: 90, 730(2년)"
+        },
+        "renewal_resets": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "갱신계약은 갱신일부터 바로 보장(대기기간 없음)이면 true"
+        },
+        "reinstatement_waiting_days": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "부활(효력회복) 시 부활일부터 대기일수"
+        },
+        "description": {
+          "type": "string",
+          "description": "원문 요약 (예외 포함)"
+        }
+      }
+    },
+    "reduction_periods": {
+      "type": "array",
+      "description": "추가: 감액지급 기간. 예: 최초계약의 계약일부터 1년 이내 50% (갱신계약은 미적용). 인터넷암 2404·비갱신암·고액치료비암·소액질병 특약에 공통.",
+      "items": {
+        "type": "object",
+        "required": [
+          "until_days",
+          "ratio"
+        ],
+        "properties": {
+          "basis": {
+            "type": "string",
+            "enum": [
+              "최초계약일",
+              "계약일"
+            ],
+            "description": "기산일"
+          },
+          "until_days": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "기산일부터 이 일수 이내(1년 = 365, '1년이 되는 시점의 계약해당일 전일까지')"
+          },
+          "ratio": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "그 기간 지급 비율 (50% → 0.5)"
+          },
+          "applies_to_renewal": {
+            "type": "boolean",
+            "description": "갱신계약에도 적용하면 true (샘플 약관은 모두 false)"
+          }
+        }
+      }
+    },
+    "facility_requirement": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "추가: 치료 장소 조건. 암치료플러스종신의 항암약물·방사선·암수술·중환자실치료는 '상급종합병원 혹은 종합병원'",
+      "enum": [
+        "상급종합병원",
+        "종합병원이상",
+        "병원이상",
+        "의료기관",
+        null
+      ]
+    },
+    "indemnity": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "실손보장에서 사용하는 항목 정의 (실손이 아닌 보장은 null)",
+      "properties": {
+        "generation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "실손 세대",
+          "enum": [
+            "1세대",
+            "2세대",
+            "3세대",
+            "4세대",
+            "5세대",
+            "판단불가",
+            null
+          ]
+        },
+        "special_case_scope": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "추가: 산정특례 대상 질환 구분. 2605 은 비중증 비급여특약(산정특례 대상 질환 외)과 중증 비급여특약(산정특례 대상 질환)이 나뉨",
+          "enum": [
+            "전체",
+            "산정특례대상",
+            "산정특례대상외",
+            null
+          ]
+        },
+        "annual_limit_amount": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "추가: 보장종목 연간 보험가입금액 상한 (입원·통원 합산). 예: 급여 5천만원, 비중증 비급여 1천만원"
+        },
+        "annual_deductible_cap_amount": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "추가: 연간 공제금액 상한. 중증 비급여 입원(상급종합·종합병원) 공제는 연 500만원까지만"
+        },
+        "extension_after_termination": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "추가: 계약 종료 후 계속 중인 입원·통원 보상 (종료일 다음 날부터 180일, 통원은 최대 90일/회)",
           "properties": {
-            "care_type": {
-              "type": ["string", "null"],
-              "description": "입원/통원 구분",
-              "enum": ["입원", "통원", "판단불가", null]
-            },
-            "benefit_category": {
-              "type": ["string", "null"],
-              "description": "급여/비급여 구분",
-              "enum": ["급여", "비급여", "도수·체외충격파·증식", "비급여주사", "비급여MRI", "판단불가", null]
-            },
-            "covered_ratio": {
-              "type": ["number", "null"],
-              "description": "보장대상비율 (0~1)",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "min_deductible_amounts": {
-              "type": ["object", "null"],
-              "description": "최소공제금액 (원)",
-              "additionalProperties": { "type": "number", "minimum": 0 }
-            },
-            "annual_limit_amount": {
-              "type": ["number", "null"],
-              "description": "연간 한도금액 (원)",
+            "days": {
+              "type": "integer",
               "minimum": 0
             },
-            "per_visit_limit_amount": {
-              "type": ["number", "null"],
-              "description": "통원 회당 한도금액 (원)",
+            "max_outpatient_visits": {
+              "type": [
+                "integer",
+                "null"
+              ],
               "minimum": 0
-            },
-            "daily_limit_amount": {
-              "type": ["number", "null"],
-              "description": "1일 한도금액 (원) - 상급병실료 등",
-              "minimum": 0
-            },
-            "annual_visit_limit": {
-              "type": ["integer", "null"],
-              "description": "연간 횟수 한도",
-              "minimum": 0
-            },
-            "annual_copay_cap_amount": {
-              "type": ["number", "null"],
-              "description": "연간 자기부담 상한 (원) - 없으면 null",
-              "minimum": 0
+            }
+          }
+        },
+        "no_health_insurance_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1,
+          "description": "추가: 건강보험·의료급여 미적용 시 보상 비율 (샘플 약관 모두 0.4)"
+        },
+        "rules": {
+          "type": "array",
+          "description": "구분별 보상 규칙",
+          "items": {
+            "type": "object",
+            "properties": {
+              "care_type": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "입원/통원 구분",
+                "enum": [
+                  "입원",
+                  "통원",
+                  "입원·통원",
+                  "판단불가",
+                  null
+                ]
+              },
+              "benefit_category": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "급여/비급여 구분. 추가: 상급병실료차액, 근골격계이학요법·체외충격파(2605 표기), 비급여주사료, 비급여자기공명영상(2605 표기)",
+                "enum": [
+                  "급여",
+                  "비급여",
+                  "상급병실료차액",
+                  "도수·체외충격파·증식",
+                  "근골격계이학요법·체외충격파",
+                  "비급여주사",
+                  "비급여주사료",
+                  "비급여MRI",
+                  "비급여자기공명영상",
+                  "판단불가",
+                  null
+                ]
+              },
+              "facility_group": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "추가: 의료기관 구분 (공제금액·한도가 의료기관별로 다름)",
+                "enum": [
+                  "의원·약국 등",
+                  "병원",
+                  "종합병원·상급종합병원",
+                  "전체",
+                  null
+                ]
+              },
+              "covered_ratio": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "보장대상비율 (0~1). 예: 급여 0.8, 비급여 0.5(=50%)",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "min_deductible_amounts": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "최소공제금액 (원). 키 = 단위(회당/1일당/1회당) 또는 의료기관 구분. 예: {\"의원·약국 등\": 10000}, {\"1일당\": 50000}",
+                "additionalProperties": {
+                  "type": "number",
+                  "minimum": 0
+                }
+              },
+              "deductible_ratio": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1,
+                "description": "추가: 비율 공제 (보장대상의료비의 20%·30%·50%). 최소공제금액과 큰 금액을 공제"
+              },
+              "deductible_copay_rate": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "추가: 공제 기준에 '보장대상의료비 × 건강보험 본인부담률' 이 들어가면 true (급여 통원)"
+              },
+              "annual_limit_amount": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "연간 한도금액 (원)",
+                "minimum": 0
+              },
+              "per_visit_limit_amount": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "통원 회당 한도금액 (원)",
+                "minimum": 0
+              },
+              "per_day_limit_amount": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "추가: 통원 1일당 한도 (비중증 비급여 통원: 외래+처방조제 합산 1일당)"
+              },
+              "per_admission_limit_amount": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "추가: 입원 1회당 한도 (비급여 입원, 의원급에서 1회당 300만원)"
+              },
+              "daily_limit_amount": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "1일 한도금액 (원) - 상급병실료 등 (상급병실료 차액은 '1일 평균금액' 10만원)",
+                "minimum": 0
+              },
+              "annual_visit_limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "description": "연간 횟수 한도 (도수·주사 50회 등)",
+                "minimum": 0
+              },
+              "annual_day_limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "추가: 연간 일수 한도 (비중증 비급여 통원 100일)"
+              },
+              "visit_step": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "추가: 횟수 단계 보장 (근골격계 이학요법·체외충격파: 최초 10회, 이후 증상 개선 확인 시 10회 단위로 연 50회까지)",
+                "properties": {
+                  "initial_visits": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "step_visits": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "condition": {
+                    "type": "string"
+                  }
+                }
+              },
+              "annual_copay_cap_amount": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "description": "연간 자기부담 상한 (원) - 없으면 null (급여 입원 200만원)",
+                "minimum": 0
+              },
+              "source": {
+                "$ref": "#/$defs/source"
+              }
             }
           }
         }
       }
-    }
-  },
-  "admission": {
-    "type": ["object", "null"],
-    "description": "입원일당(정액형 입원비) 항목 정의 (입원일당이 아닌 보장은 null)",
-    "properties": {
-      "deductible_days": {
-        "type": ["integer", "null"],
-        "description": "면책일수 (예: 3일 초과 지급이면 3, 1일 이상 지급이면 0)",
-        "minimum": 0
-      },
-      "max_days_per_admission": {
-        "type": ["integer", "null"],
-        "description": "1회 입원당 최대 지급일수 (예: 120, 180)",
-        "minimum": 0
-      },
-      "exemption_period_days": {
-        "type": ["integer", "null"],
-        "description": "1회 입원 한도 소진 후 재입원 면책기간 (일, 예: 180)",
-        "minimum": 0
-      }
-    }
-  },
-  "benefits": {
-    "type": "array",
-    "description": "보험금에 대한 정의",
-    "items": {
-      "type": "object",
+    },
+    "admission": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "입원일당(정액형 입원비) 항목 정의 (입원일당이 아닌 보장은 null). 샘플 7개에는 없음.",
       "properties": {
-        "benefit_code": {
-          "type": "string",
-          "description": "보험금코드"
+        "deductible_days": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "면책일수 (예: 3일 초과 지급이면 3, 1일 이상 지급이면 0)",
+          "minimum": 0
         },
-        "benefit_name": {
-          "type": "string",
-          "description": "보험금 명칭"
+        "max_days_per_admission": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "1회 입원당 최대 지급일수 (예: 120, 180)",
+          "minimum": 0
         },
-        "benefit_description": {
-          "type": "string",
-          "description": "보험금 설명"
-        },
-        "calc_tool_name": {
-          "type": "string",
-          "description": "보험금을 계산하는 tool명"
+        "exemption_period_days": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "1회 입원 한도 소진 후 재입원 면책기간 (일, 예: 180)",
+          "minimum": 0
         }
       }
-    }
-  },
-  "pgm_review_items": {
-    "type": "array",
-    "description": "프로그램이 판단하는 조건",
-    "items": {
-      "type": "object",
+    },
+    "annuity": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "추가: 연금형 지급 (중증간병연금전환특약의 생존연금·중증간병연금). 연금이 아닌 보장은 null",
       "properties": {
-        "pgm_review_code": {
+        "annuity_type": {
           "type": "string",
-          "description": ""
+          "enum": [
+            "생존연금",
+            "간병연금",
+            "판단불가"
+          ]
         },
-        "pgm_review_name": {
+        "payment_trigger": {
           "type": "string",
-          "description": ""
+          "description": "예: 연금지급개시일 이후 매년 연계약해당일에 살아 있을 때 / 중증장기요양상태·중증치매상태 최초 판정일 해당일에 살아 있을 때"
         },
-        "pgm_review_description": {
+        "max_payments": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "description": "최고 지급 횟수 (중증간병연금 10회)"
+        },
+        "guaranteed_payments": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "보증지급횟수 (최소 10회(기대여명이 짧으면 기대여명, 최소 5회) ~ 100-연금개시나이 중 선택)"
+        },
+        "frequency_options": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "연",
+              "월",
+              "3개월",
+              "6개월"
+            ]
+          }
+        },
+        "amount_basis": {
           "type": "string",
-          "description": ""
-        },
-        "tool": {
-          "type": "object",
-          "description": "이 조건을 체크하기 위해 호출해야되는 tool과 input에 대한 정보",
-          "properties": {
-            "tool_name": {
-              "type": "string",
-              "description": "호출할 tool의 이름"
-            },
-            "tool_pgm": {
-              "type": "string",
-              "description": "호출할 tool의 pgm명"
+          "description": "연금액 산출 기준 (산출방법서)"
+        }
+      }
+    },
+    "benefits": {
+      "type": "array",
+      "description": "보험금에 대한 정의",
+      "items": {
+        "type": "object",
+        "required": [
+          "benefit_code",
+          "benefit_name"
+        ],
+        "properties": {
+          "benefit_code": {
+            "type": "string",
+            "description": "보험금코드"
+          },
+          "benefit_name": {
+            "type": "string",
+            "description": "보험금 명칭"
+          },
+          "benefit_description": {
+            "type": "string",
+            "description": "보험금 설명"
+          },
+          "calc_tool_name": {
+            "type": "string",
+            "description": "보험금을 계산하는 tool명. 예: calc_fixed_ratio_benefit(가입금액×비율), calc_step_up_death_benefit(체증형 사망), calc_indemnity(실손), calc_annuity(연금)"
+          },
+          "amount": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "추가: 지급 금액 정의 (계산 tool 의 입력). 정액 비율·체증·합산·실손 등",
+            "properties": {
+              "amount_type": {
+                "type": "string",
+                "enum": [
+                  "가입금액비율",
+                  "정액",
+                  "체증",
+                  "치료횟수합산",
+                  "실손",
+                  "연금산출",
+                  "판단불가"
+                ],
+                "description": "가입금액비율 = 보험가입금액 × ratio, 체증 = schedule, 치료횟수합산 = Σ(치료별 지급횟수 × 비율) × 가입금액 (암치료플러스 사망보험금Ⅱ)"
+              },
+              "base": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "보험가입금액",
+                  "특약보험가입금액",
+                  "주계약사망보험금액",
+                  null
+                ]
+              },
+              "ratio": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "가입금액 대비 (40% → 0.4, 120% → 1.2)"
+              },
+              "fixed_amount": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "description": "정액 (원)"
+              },
+              "schedule": {
+                "type": "array",
+                "description": "체증 일정 (암치료플러스 사망보험금Ⅰ: 10년 전 100%, 10~20년 매년 10% 체증, 20년 이후 200%)",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from_year": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "to_year": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "ratio": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "yearly_step_ratio": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    }
+                  }
+                }
+              },
+              "components": {
+                "type": "array",
+                "description": "합산 구성 (치료별 지급비율 등)",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "ratio": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  }
+                }
+              },
+              "minimum_rules": {
+                "type": "array",
+                "description": "'큰 금액 지급' 규칙 (이미 납입한 보험료, 해약환급금 중 큰 금액)",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "이미납입한보험료",
+                    "해약환급금",
+                    "계약자적립액"
+                  ]
+                }
+              }
+            }
+          },
+          "payment_limit": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "추가: 지급 횟수 한도",
+            "properties": {
+              "count": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 1
+              },
+              "per": {
+                "type": "string",
+                "enum": [
+                  "보험기간",
+                  "보험연도",
+                  "분류질병별",
+                  "진단건별",
+                  "판단불가"
+                ],
+                "description": "최초 1회(보험기간) / 연간 1회(보험연도) / 7가지 분류질병 각각 1회(분류질병별)"
+              },
+              "categories": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "분류질병별일 때 분류 목록"
+              }
+            }
+          },
+          "combinable_with": {
+            "type": "array",
+            "description": "추가: 함께 지급(합산)되는 다른 보험금 코드 (암진단보험금Ⅰ+Ⅱ+Ⅲ 중 해당분 합산, 사망보험금Ⅰ+증액+Ⅱ)",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excludes": {
+            "type": "array",
+            "description": "추가: 이 보험금이 지급되면 지급하지 않는 다른 보험금 코드 (비침습 방광암·대장점막내암 → 제자리암 미지급)",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "$ref": "#/$defs/source"
+          }
+        }
+      }
+    },
+    "premium_waiver": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "추가: 보험료 납입면제 (암 진단 확정, 장해지급률 50% 이상, 주계약 납입면제 시 특약도 면제 등)",
+      "properties": {
+        "triggers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "진단",
+                  "장해",
+                  "주계약면제",
+                  "판단불가"
+                ]
+              },
+              "kcd_code_patterns": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "regex"
+                }
+              },
+              "disability_rate_min": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1,
+                "description": "장해지급률 합산 기준 (0.5)"
+              },
+              "description": {
+                "type": "string"
+              }
             }
           }
         }
       }
+    },
+    "exclusions": {
+      "type": "array",
+      "description": "추가: 보상하지 않는 사항 (실손 제4조는 원인·질병·비용항목이 길고, 정액형도 고의 자해 등 공통 사유가 있음)",
+      "items": {
+        "type": "object",
+        "required": [
+          "kind",
+          "description"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "원인",
+              "질병",
+              "비용항목",
+              "기간",
+              "판단불가"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "kcd_code_patterns": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "regex"
+            }
+          },
+          "exception": {
+            "type": "string",
+            "description": "다만 … 보상 (예외)"
+          },
+          "source": {
+            "$ref": "#/$defs/source"
+          }
+        }
+      }
+    },
+    "pgm_review_items": {
+      "type": "array",
+      "description": "프로그램이 판단하는 조건",
+      "items": {
+        "type": "object",
+        "properties": {
+          "pgm_review_code": {
+            "type": "string",
+            "description": "프로그램 판단 코드. 예: PGM-START(보장개시), PGM-PRIOR(기지급 이력), PGM-RESET-5Y, PGM-REDUCTION(감액기간), PGM-SEX(성별 한정), PGM-FACILITY(의료기관 종별), PGM-YEARLY-ONCE(보험연도 1회)"
+          },
+          "pgm_review_name": {
+            "type": "string",
+            "description": "판단 이름"
+          },
+          "pgm_review_description": {
+            "type": "string",
+            "description": "판단 방법 (입력·출력)"
+          },
+          "tool": {
+            "type": "object",
+            "description": "이 조건을 체크하기 위해 호출해야되는 tool과 input에 대한 정보",
+            "properties": {
+              "tool_name": {
+                "type": "string",
+                "description": "호출할 tool의 이름"
+              },
+              "tool_pgm": {
+                "type": "string",
+                "description": "호출할 tool의 pgm명"
+              }
+            }
+          }
+        }
+      }
+    },
+    "ai_review_items": {
+      "type": "array",
+      "description": "AI가 판단해야하는 조건이 정의",
+      "items": {
+        "type": "object",
+        "properties": {
+          "ai_review_group": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "추가(예시 데이터에서 씀): 같은 그룹은 OR(하나만 통과하면 됨), 그룹끼리는 AND. 예: 1 = 진단확정일, 2 = 분류질병 해당 여부(초기유방암 OR 경계성종양 OR …)"
+          },
+          "ai_review_code": {
+            "type": "string",
+            "description": "AI리뷰코드"
+          },
+          "ai_review_name": {
+            "type": "string",
+            "description": "AI리뷰코드명"
+          },
+          "ai_review_description": {
+            "type": "string",
+            "description": "이 조건을 판단하는 방법이 설명되었는 항목"
+          }
+        }
+      }
+    },
+    "source": {
+      "$ref": "#/$defs/source"
     }
   },
-  "ai_review_items": {
-    "type": "array",
-    "description": "AI가 판단해야하는 조건이 정의",
-    "items": {
-      "type": "object",
+  "$defs": {
+    "source": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "description": "추가: 약관 근거 (조·항·호·별표·인용문). 뽑은 값이 원문에 있는지 다시 확인(근거 검증)할 때 씀",
       "properties": {
-        "ai_review_code": {
-          "type": "string",
-          "description": "AI리뷰코드"
+        "policy_name": {
+          "type": "string"
         },
-        "ai_review_name": {
-          "type": "string",
-          "description": "AI리뷰코드명"
+        "article": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "예: 제3조, 제2-2조"
         },
-        "ai_review_description": {
+        "paragraph": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "item": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "appendix": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "예: 별표 1"
+        },
+        "quote": {
           "type": "string",
-          "description": "이 조건을 판단하는 방법이 설명되었는 항목"
+          "description": "원문 그대로의 짧은 인용"
         }
       }
     }
