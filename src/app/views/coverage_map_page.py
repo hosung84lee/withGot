@@ -165,7 +165,10 @@ report = policy.ground(product, terms_doc)  # 원문 근거 확인 → status co
 product = report.product
 with st.sidebar:
     sections = sorted({r.section for c in product.coverages for r in c.risks if r.section})
-    section = st.selectbox("보장종목", sections) if sections else None
+    # 기본은 정답 데이터(사람 검토)가 있는 보장종목
+    preferred = {k.section for c in golden.coverages for k in c.risks} if golden else set()
+    default_sec = next((i for i, s in enumerate(sections) if s in preferred), 0)
+    section = st.selectbox("보장종목", sections, index=default_sec) if sections else None
     st.caption(f"원문 근거 확인 {report.confirmed}건 · 검토 필요 {report.needs_review}건")
 
 

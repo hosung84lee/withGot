@@ -156,7 +156,23 @@ def _rule_notes(rule: BenefitRule) -> list[str]:
 
 
 def link_claim(claim: Claim, product: Product, section: str | None = None) -> CoverageMap:
-    all_rules = [r for cov in product.coverages for risk in cov.risks for r in risk.rules]
+    # 선택한 보장종목 안의 규칙만 봄 (다른 보장종목·특약의 비급여 규칙과 섞지 않음)
+    section_rules = [
+        r
+        for cov in product.coverages
+        for risk in cov.risks
+        if section is None or risk.section == section
+        for r in risk.rules
+    ]
+    elsewhere = sorted(
+        {
+            risk.section or cov.name
+            for cov in product.coverages
+            for risk in cov.risks
+            if risk.section != section
+            and any(r.benefit.cost_type == "non_covered" for r in risk.rules)
+        }
+    )
     exclusions = [
         ex
         for cov in product.coverages
@@ -173,7 +189,7 @@ def link_claim(claim: Claim, product: Product, section: str | None = None) -> Co
             if ex.kind == "kcd" and cc and any(kcd_in(code, k.start, k.end) for k in cc.kcd):
                 claim_excl.append((code, ex))
 
-    covers_uncovered = any(r.benefit.cost_type == "non_covered" for r in all_rules)
+    covers_uncovered = any(r.benefit.cost_type == "non_covered" for r in section_rules)
     reason = "hospitalization" if claim.setting == "hospitalization" else "outpatient"
     risks = _risks(product, section, reason)
     rules = [r for risk in risks for r in risk.rules]
@@ -197,7 +213,12 @@ def link_claim(claim: Claim, product: Product, section: str | None = None) -> Co
                     item,
                     "not_covered",
                     notes=[
-                        "이 약관은 급여 의료비만 보상합니다. 비급여는 비급여 특약에서 확인하세요."
+                        "이 보장종목은 급여 의료비만 보상합니다. "
+                        + (
+                            f"비급여는 {', '.join(elsewhere)} 에서 확인하세요."
+                            if elsewhere
+                            else "비급여는 비급여 특약에서 확인하세요."
+                        )
                     ],
                 )
             )

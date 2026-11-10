@@ -150,3 +150,28 @@ def test_merge_combines_same_coverage(tmp_path):
     golden = load_product()
     merged = policy.merge([golden, golden.model_copy(update={"coverages": []})], "x")
     assert len(merged.coverages) == 1 and len(merged.rules()) == 4
+
+
+def test_uncovered_rules_in_other_section_do_not_leak():
+    # 다른 보장종목(비급여형)에 비급여 규칙이 있어도 질병급여형에서는 '보상 대상 아님' + 안내
+    from coverage_map import policy
+
+    golden = load_product()
+    extra = golden.model_copy(deep=True)
+    risk = extra.coverages[0].risks[0]
+    risk.id, risk.section = "p1/질병비급여형/h1", "질병비급여형"
+    rule = risk.rules[0]
+    rule.id, rule.name = "p1/질병비급여형/h1/1", "비급여 입원"
+    rule.benefit.cost_type = "non_covered"
+    extra.coverages[0].id, extra.coverages[0].risks = "p1", [risk]
+    extra.coverages[0].exclusions, extra.coverage_codes = [], []
+    product = policy.merge([golden, extra], "x")
+    claim = build_claim([parse_document("r", RECEIPT), parse_document("d", DETAIL)])
+    cmap = link_claim(claim, product, section="질병급여형")
+    assert [link.status for link in cmap.links] == [
+        "linked",
+        "linked",
+        "not_covered",
+        "not_covered",
+    ]
+    assert "질병비급여형 에서 확인" in cmap.links[2].notes[0]
