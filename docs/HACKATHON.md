@@ -7,7 +7,7 @@
 > 이 저장소는 참고용이고, 다시 만들 때는 [REBUILD_GUIDE.md](REBUILD_GUIDE.md)(설계·규칙·정답 수치·테스트 예시)를 따르세요.
 
 - 저장소: https://github.com/hosung84lee/withGot (브랜치 `main`)
-- 세부 문서: [약관 구조화·검증](terms.md) · [사고보장 데이터 추출](coverage_extract.md) · [사고보장 스키마](coverage_schema.md)
+- 세부 문서: [약관 구조화·검증](terms.md) · [사고보장 데이터 추출](coverage_extract.md) · [사고보장 스키마](coverage_schema.md) · [사고보장 테이블](coverage_tables.md)
 
 ## 1. 한눈에 보기
 
@@ -19,6 +19,7 @@
 | AI 조항 분석 (분류·요약·불공정 조항) | 코드 있음, 실제 LLM 미실행 | `src/terms/analyzer.py` |
 | 사고보장 스키마 (정액 + **실손**) | 동작 | `src/schema/coverage.py` |
 | 사고보장 추출: 묶음 → LLM → 근거 검증 → 정답 비교 | **코드·테스트 완료, 실제 LLM 미실행** | `src/coverage_extract/` |
+| 사고보장 데이터 ↔ 테이블(SQLite) 저장·조회 | 동작 · 저장 후 읽으면 원래 데이터와 같음 | `src/coverage_store/` |
 | 약관 구조화 뷰어 (HTML) | 동작 | `tools/terms_viewer/` |
 
 위 표는 **이 저장소(참고용)** 의 상태입니다. 해커톤에서는 새 저장소에 [REBUILD_GUIDE.md](REBUILD_GUIDE.md) 마일스톤 순서로
@@ -97,10 +98,10 @@ copy .env.example .env            # OPENAI_API_KEY 입력
 ```
 
 ```powershell
-# 빠른 테스트 (약 5초, 116개 통과 · 5개 건너뜀이 정상)
+# 빠른 테스트 (약 5초, 122개 통과 · 5개 건너뜀이 정상)
 uv run pytest
 
-# 실제 약관 PDF 테스트까지 (약 2분, 121개 통과가 정상)
+# 실제 약관 PDF 테스트까지 (약 2분, 127개 통과가 정상)
 uv run pytest --pdf
 
 # 사고보장 추출 묶음 보기 (API 키 없이)

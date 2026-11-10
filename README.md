@@ -18,7 +18,7 @@ MCP 서버: `uv run python -m mcp_server.server`
 ## 폴더 구조
 
 ```
-docs/             # 문서 (HACKATHON.md, REBUILD_GUIDE.md, agent.md, tracing.md, terms.md, coverage_schema.md, coverage_extract.md)
+docs/             # 문서 (HACKATHON.md, REBUILD_GUIDE.md, agent.md, tracing.md, terms.md, coverage_schema.md, coverage_extract.md, coverage_tables.md)
 tests/            # pytest (실제 약관 PDF 테스트는 --pdf)
 tools/
 └── terms_viewer/ # 약관 구조화 뷰어 HTML 만들기 (build.py)
@@ -33,6 +33,7 @@ src/
 ├── skills/       # Agent 도구 (@tool 로 등록)
 ├── terms/        # 약관 구조화 · 검증 · AI 분석
 ├── coverage_extract/  # 구조화된 약관 → 사고보장 데이터 (묶음 · LLM 추출 · 근거 검증 · 정답 비교)
+├── coverage_store/    # 사고보장 데이터 ↔ 관계형 테이블(SQLite) 저장·조회
 └── data/
     ├── pdf/
     ├── image/
@@ -58,6 +59,8 @@ uv run python -m coverage_extract 약관.pdf --section 질병급여형 --out out
 자세한 내용: [docs/coverage_extract.md](docs/coverage_extract.md)
 
 약관에서 뽑은 보장 정보를 담는 표준 구조(사고보장 Canonical Schema) 설계: [docs/coverage_schema.md](docs/coverage_schema.md)
+
+사고보장 데이터를 테이블에 저장하는 구조와 변환 명령(`python -m coverage_store`): [docs/coverage_tables.md](docs/coverage_tables.md)
 
 ```python
 from terms import parse_terms, validate_structure, run_terms_pipeline

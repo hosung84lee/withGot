@@ -32,6 +32,7 @@ packages = [
     "src/skills",
     "src/terms",
     "src/coverage_extract",
+    "src/coverage_store",
 ]
 
 [tool.ruff]

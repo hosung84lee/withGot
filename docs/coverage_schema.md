@@ -4,7 +4,7 @@
 보험금 계산 툴(MCP)은 이 구조를 입력으로 받고, 검증 단계는 이 구조의 모든 항목이 약관 원문에 근거하는지 확인합니다.
 
 - 모델 코드: [`src/schema/coverage.py`](../src/schema/coverage.py)
-- 관련 문서: 약관 구조화·검증 [terms.md](terms.md), 약관에서 이 데이터를 뽑는 방법 [coverage_extract.md](coverage_extract.md)
+- 관련 문서: 약관 구조화·검증 [terms.md](terms.md), 약관에서 이 데이터를 뽑는 방법 [coverage_extract.md](coverage_extract.md), 테이블에 저장하는 구조 [coverage_tables.md](coverage_tables.md)
 
 > 실제 업무 시스템의 사고보장 구조(보장 → 위험률 → 위험유형 → 급부)를 **개념만** 참고했습니다.
 > 내부 테이블명·컬럼명·코드값은 이 저장소에 두지 않으며, 대응표가 필요하면 사내 문서에서 관리합니다.
