@@ -15,6 +15,8 @@
 [근거 검증]  coverage_extract/grounding.py   인용문·숫자가 원문에 있는지 확인 → confirmed / needs_review
    ▼
 [정답 비교]  coverage_extract/compare.py     사람이 만든 정답 JSON 과 규칙 단위로 비교 (선택)
+   ▼
+[스키마 갭]  coverage_extract/gaps.py        원문에 있는데 데이터로 못 담은 것 → 스키마 확장 제안 (LLM 없음)
 ```
 
 ## 실행
@@ -32,6 +34,9 @@ uv run python -m coverage_extract "<위 PDF>" --section 질병급여형 \
 
 # 4) 저장해 둔 결과를 API 호출 없이 다시 검증·비교
 uv run python -m coverage_extract "<위 PDF>" --ground out.json --compare tests/fixtures/silson_2605_disease_covered.json
+
+# 5) 스키마 갭 분석 — API 키 필요 없음. --ground 를 주면 근거 없는 원문·빈 필드까지
+uv run python -m coverage_extract "<위 PDF>" --gaps --ground tests/fixtures/silson_2605_disease_covered.json --out gaps.json
 ```
 
 | 옵션 | 설명 |
@@ -42,6 +47,7 @@ uv run python -m coverage_extract "<위 PDF>" --ground out.json --compare tests/
 | `--section 질병급여형` | 이 글자가 든 묶음만 추출 (여러 번 지정 가능). 비용·시간 절약용 |
 | `--out out.json` | `{"product": …, "issues": […]}` 저장 |
 | `--compare GOLDEN` | 결과를 정답 JSON 과 비교해서 일치율·차이 출력 |
+| `--gaps` | 스키마 갭 분석 (5장). `--ground FILE` 과 함께 쓰면 그 데이터 기준으로 근거 없는 원문·빈 필드도 |
 
 코드에서:
 
@@ -113,6 +119,56 @@ report.confirmed, report.needs_review
   - 보상 제외 키: (종류, KCD 범위) 또는 (종류, 설명)
 - 출력: 일치 / 값이 다름(무엇이 다른지) / 빠짐 / 정답에 없음, 그리고 일치율(정답 항목 중 값까지 맞힌 비율).
 
+## 5. 스키마 갭 분석 (`gaps.py`)
+
+추출 결과가 스키마에 **잘 들어간 것**만 보면, 스키마가 표현하지 못해 버려진 내용은 보이지 않습니다.
+갭 분석은 반대로 **약관 원문에서 출발**해서 데이터로 담지 못한 것을 찾고, 스키마를 어떻게 넓혀야 하는지 제안합니다.
+
+| 결과 | 무엇을 찾나 | 어떻게 |
+|---|---|---|
+| 개념 갭 | 원문에 나오는 보상 규칙 개념 중 스키마에 자리가 없거나(구조 확장·필드 추가) 글로만 담기는(부분 표현) 것 | 개념 목록(`CONCEPTS`)의 문구 패턴을 묶음의 항·호에서 찾음. 공통 조(제5조)는 한 번만 |
+| 근거 없는 원문 | 데이터가 있는 묶음에서 어떤 규칙·보상 제외도 인용하지 않은 항·호 | 인용문이 그 항·호에 있는지. '다음과 같습니다' 같은 안내 문장은 뺌 |
+| 빈 필드 | 스키마에 필드는 있는데 원문 값이 데이터에 없음 | 예: 원문에 KCD 차수가 있는데 `kcd_version` 이 비어 있음 |
+
+근거 없는 항·호는 **빠진 이유**로 나눕니다. 이 구분이 "스키마를 넓힐지, 추출을 고칠지"를 정합니다.
+
+| 이유 | 뜻 | 할 일 |
+|---|---|---|
+| `schema_gap` | 그 항·호에 스키마에 자리가 없는 개념(구조 확장·필드 추가)이 있음 | **스키마 확장** |
+| `uncited_value` | 그 항·호의 숫자(180일 등)가 데이터에 이미 있는데 근거로 인용하지 않음 | 근거(`extra_sources`) 보완 |
+| `extraction_gap` | 지금 스키마로 담을 수 있는데 데이터에 없음 (예: 성장호르몬 제외 → `Exclusion(kind="cost_item")`) | 추출 프롬프트·정답 보완 |
+
+### 실손 2605 결과
+
+개념 갭 16종 (묶음 8개 전체):
+
+| 종류 | 개념 | 원문 | 제안 |
+|---|---|---|---|
+| 구조 확장 | 여러 보상의 합산 한도 (입원+통원 합산 5천만원) | 5곳 | `LimitPool{amount, per, members}` |
+| 구조 확장 | 1회 산정 규칙 (같은 날 외래+처방 = 1회, 치료행위·부위별 1회) | 12곳 | `CountingRule{unit, merge_when, deductible_on_merge}` |
+| 구조 확장 | 사고 단위 정의 ("하나의 질병", "1회 입원") | 4곳 | `EventDefinition` + 규칙에서 참조 |
+| 구조 확장 | 단계적 보장 (최초 10회 후 개선 확인 시 10회 단위, 연 50회) | 1곳 | `Limit.stages{initial, step, max, requires}` |
+| 구조 확장 | 다른 보장종목으로 이관 (항암제 주사료 → 《질병비급여형》) | 1곳 | `redirect_to{section, article}` |
+| 필드 추가 | '연간'의 기준 (보험연도) | 5곳 | `AmountLimit.period_basis` |
+| 필드 추가 | 연장 보상의 잔여 한도 (연간 한도 − 이미 지급액) | 4곳 | `Extension.limit_basis` |
+| 필드 추가 | 감면받은 의료비의 계산 기준 (감면 후/전) | 18곳 | `Benefit.reduction_basis` |
+| 필드 추가 | 기간이 정해진 보상 제외 (가입일부터 2년 이내) | 1곳 | `Exclusion.within_days` |
+| 필드 추가 | 피보험자 조건 (가입 당시 태아, 18세까지) | 8곳 | `Condition.insured{at_entry, age_max}` |
+| 필드 추가 | 갱신·전환·재가입 시 처리 | 11곳 | `Condition.contract_history` |
+| 필드 추가 | 대상 질환 조건 (산정특례) | 6곳 | `Risk.eligibility` |
+| 필드 추가 | 보상 대상 비용 항목 (행위료·약제비…, 입원실료·입원수술비) | 7곳 | `Benefit.included_items[]` |
+| 부분 표현 | 보상 제외의 예외 ("다만 …은 보상") | 39곳 | `ExclusionException{kcd, cost_type, insured_condition, age_limit}` |
+| 부분 표현 | 연간 횟수 한도 (350만원 이내에서 50회까지) | 1곳 | `Limit.count_per` + 금액 한도와 결합 |
+| 부분 표현 | KCD 차수 (제9차 KCD, 이후 개정 포함) | 5곳 | `kcd_version` 채우기 |
+
+정답 데이터(《질병급여형》) 기준: 항·호 36개 중 **12개만 인용(33%)**. 나머지 24개의 이유는
+스키마 확장 필요 8 · 근거 인용 보완 2 · 추출·정답 보완 14. 빈 필드 1 (`kcd_version`).
+
+- 개념 목록은 실손 2605 묶음 8개에서 실제로 본 문구로 만들었습니다. 다른 약관(암보험 등)에서는 목록에 없는 개념이
+  '근거 없는 원문 · extraction_gap' 으로 드러나므로, 그 항·호를 보고 새 개념을 `CONCEPTS` 에 추가합니다.
+- 패턴은 문구 기반이라 같은 개념을 다른 말로 쓰면 놓칠 수 있습니다. LLM 추출 때 "스키마에 못 담은 내용" 칸을 함께
+  받도록 확장하면 보완됩니다 (다음 할 일).
+
 ## 테스트
 
 | 파일 | 내용 |
@@ -120,6 +176,7 @@ report.confirmed, report.needs_review
 | `tests/test_coverage_extract.py` | 묶음, 숫자 읽기, 가짜 LLM 응답으로 추출·id 재지정·근거 검증(인용·숫자·조 오류), 재시도, 정답 비교, 명령 |
 | `tests/test_coverage_schema.py` | 스키마 형식·참조·정합성 |
 | `test_real_silson_2605_golden_is_grounded` (`--pdf`) | 실제 PDF 로 정답 파일 근거 11/11, 묶음 8개 |
+| `tests/test_coverage_gaps.py` | 개념 갭 찾기, 공통 조 한 번만, 보상 제외 전용 개념, 빠진 이유 3가지, 명령. `--pdf`: 실손 2605 수치(16종, 36/12, 8·2·14) |
 
 ## 한계와 다음 할 일
 
@@ -130,5 +187,6 @@ report.confirmed, report.needs_review
   LLM 이 칸을 헷갈리면 NUMBER_NOT_FOUND·비교 결과로 드러납니다. 필요하면 PyMuPDF 표 추출 검토.
 - **정액형(암보험 등)** 은 지급 금액이 별표(보험금 지급기준표)에 있어서 지금 묶음(조만 넣음)으로는 부족합니다.
   묶음에 인용된 별표·정의 조(제2조의N "암"의 정의)를 넣는 확장이 필요합니다.
-- 보상 제외의 예외("다만 F20~F29 요양급여는 보상")는 `exception` 글로만 둡니다 (구조화 안 함).
+- 보상 제외의 예외("다만 F20~F29 요양급여는 보상")는 `exception` 글로만 둡니다 (구조화 안 함). 갭 분석의 `STRUCTURED_EXCEPTION`.
+- 갭 분석이 제안한 스키마 확장(5장)은 아직 스키마에 반영하지 않았습니다. 우선순위 제안: 합산 한도 → 1회 산정 규칙 → 보상 제외의 예외 구조화.
 - 개정 비교(2601 ↔ 2605)는 설계만 있음: 둘 다 추출한 뒤 규칙 id 기준 diff 를 만들면 됩니다.

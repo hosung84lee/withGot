@@ -53,10 +53,25 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--section", action="append", help="이 보장종목만 추출 (여러 번 지정 가능)")
     ap.add_argument("--out", type=Path, help="결과 JSON 저장 경로")
     ap.add_argument("--compare", type=Path, help="결과를 이 정답 JSON 과 비교")
+    ap.add_argument(
+        "--gaps",
+        action="store_true",
+        help="스키마 갭 분석 (LLM 호출 안 함). --ground 로 사고보장 JSON 을 주면 근거 없는 원문·빈 필드도",
+    )
     args = ap.parse_args(argv)
 
     text = bytes_to_text(args.file.name, args.file.read_bytes())
     doc = parse_terms(text)
+
+    if args.gaps:
+        from coverage_extract.gaps import analyze_gaps, format_report
+
+        gaps = analyze_gaps(doc, _load_product(args.ground) if args.ground else None)
+        print(format_report(gaps))
+        if args.out:
+            args.out.write_text(gaps.model_dump_json(indent=2), encoding="utf-8")
+            print(f"\n저장: {args.out}")
+        return 0
 
     if args.dry_run:
         for b in build_bundles(doc):

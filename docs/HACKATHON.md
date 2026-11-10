@@ -19,6 +19,7 @@
 | AI 조항 분석 (분류·요약·불공정 조항) | 코드 있음, 실제 LLM 미실행 | `src/terms/analyzer.py` |
 | 사고보장 스키마 (정액 + **실손**) | 동작 | `src/schema/coverage.py` |
 | 사고보장 추출: 묶음 → LLM → 근거 검증 → 정답 비교 | **코드·테스트 완료, 실제 LLM 미실행** | `src/coverage_extract/` |
+| 스키마 갭 분석 (원문에 있는데 데이터로 못 담은 것 → 확장 제안) | 동작 · 실손 2605 에서 16종 | `src/coverage_extract/gaps.py` |
 | 사고보장 데이터 ↔ 테이블(SQLite) 저장·조회 | 동작 · 저장 후 읽으면 원래 데이터와 같음 | `src/coverage_store/` |
 | 약관 구조화 뷰어 (HTML) | 동작 | `tools/terms_viewer/` |
 
@@ -98,10 +99,10 @@ copy .env.example .env            # OPENAI_API_KEY 입력
 ```
 
 ```powershell
-# 빠른 테스트 (약 5초, 122개 통과 · 5개 건너뜀이 정상)
+# 빠른 테스트 (약 5초, 128개 통과 · 6개 건너뜀이 정상)
 uv run pytest
 
-# 실제 약관 PDF 테스트까지 (약 2분, 127개 통과가 정상)
+# 실제 약관 PDF 테스트까지 (약 2분, 134개 통과가 정상)
 uv run pytest --pdf
 
 # 사고보장 추출 묶음 보기 (API 키 없이)
