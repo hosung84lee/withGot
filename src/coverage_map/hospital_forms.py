@@ -110,6 +110,10 @@ def _receipt(filename: str, text: str) -> MedicalDoc:
         doc.fields["질병분류기호"] = codes[0]
         if codes[1:]:
             doc.fields["부상병"] = ", ".join(codes[1:])
+    # '치료일: 07.06, 07.09, …' (여러 줄에 걸칠 수 있음) → 방문일
+    m = re.search(r"치료일\s*:\s*((?:\d{2}\.\d{2}[,\s]*)+)", text)
+    if m:
+        doc.fields["방문일"] = ", ".join(re.findall(r"\d{2}\.\d{2}", m.group(1)))
     return doc
 
 
@@ -178,5 +182,10 @@ def parse_hospital_forms(filename: str, text: str) -> list[MedicalDoc]:
         elif kind == "DIAGNOSIS":
             docs.append(_diagnosis(name, body))
         else:  # 확인서·결과지: 종류만 구분 (내용은 AI 판단 입력으로 쓸 예정)
-            docs.append(MedicalDoc(filename=name, kind=kind))
+            doc = MedicalDoc(filename=name, kind=kind)
+            if kind == "RADIATION":  # 회차별 치료일 '2026.04.27(월)' → 방문일
+                days = re.findall(r"\d{4}\.(\d{2}\.\d{2})\([월화수목금토일]\)", body)
+                if days:
+                    doc.fields["방문일"] = ", ".join(sorted(set(days)))
+            docs.append(doc)
     return docs

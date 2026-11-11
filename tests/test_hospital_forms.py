@@ -126,7 +126,7 @@ def test_bundle_becomes_two_claims_and_links():
     )  # 영수증의 주상병 (진단서 C50.4 아님)
     assert (inp.facility_type, inp.setting, inp.kcd) == ("종합병원", "hospitalization", ["C50.4"])
     assert len(out.items) == 4 and len(inp.items) == 4  # 세부내역은 진료기간이 같은 영수증에만
-    assert any("여러 날 통원" in w for w in out.warnings)
+    assert out.copay_rate == (20000, 66000) and out.period == "2026.07.06 ~ 2026.07.09"
     assert not any("다릅니다" in w for w in out.warnings + inp.warnings)  # 영수증 = 세부내역 합계
 
     product = load_product()
@@ -134,7 +134,13 @@ def test_bundle_becomes_two_claims_and_links():
     assert [x.status for x in m_out.links] == ["linked", "linked", "linked", "not_covered"]
     (est,) = m_out.estimates
     assert est.rule.name.startswith("급여 통원 - 의원")
-    assert (est.covered, est.deductible, est.payable) == (20000, 10000, 10000)
+    # 통원 공제는 방문 1회마다: 07.06 은 5,520 + 10,540 = 16,060 → 공제 1만원, 07.09 는 3,940 → 공제 이하
+    assert [(v.date, v.covered, v.deductible, v.payable) for v in est.visits] == [
+        ("07.06", 16060, 10000, 6060),
+        ("07.09", 3940, 10000, 0),
+    ]
+    assert (est.covered, est.deductible, est.payable) == (20000, 13940, 6060)  # 합산이면 10,000
+    assert any("본인부담률 30.3%" in n for n in est.notes)
 
     m_in = link_claim(inp, product, section="질병급여형")
     (est,) = m_in.estimates
@@ -147,3 +153,57 @@ def test_legacy_sample_format_still_single_document():
         "r.txt", "진료비 계산서·영수증\nBOJANGIT SAMPLE V1 RECEIPT\n의료기관 | 가상한빛의원\n"
     )
     assert [d.kind for d in docs] == ["RECEIPT"] and docs[0].filename == "r.txt"
+
+
+def test_visit_dates_from_receipt_and_range_rows():
+    """'07.06~07.13' 3일 같은 줄은 영수증의 치료일 목록으로 방문일을 정하고, 금액을 방문마다 나눔."""
+    receipt = RECEIPT_OUT.replace("2026.07.09", "2026.07.13").replace(
+        "부상병:", "치료일: 07.06, 07.09,\n        07.13\n부상병:"
+    )
+    detail = (
+        "진료비 세부산정내역\nT-0001 김가상(가명) 정형외과 2026.07.06 ~ 2026.07.13 - 건강보험 -\n"
+        "진찰료 07.06 AA154 외래 초진진찰료(의원) 40,000 1 1 40,000 12,000 28,000 0 0\n"
+        "재활물리 07.06~07.13 MM010 표층열치료(핫팩) 10,000 1 3 30,000 9,001 20,999 0 0\n"
+        "07.09~07.13 AA157 외래 재진진찰료(의원) 13,000 1 2 26,000 8,000 18,000 0 0\n"
+    )
+    docs = parse_documents("o.pdf", receipt + detail)
+    (claim,) = build_claims(docs)
+    assert claim.visit_dates == ["07.06", "07.09", "07.13"]
+    (est,) = link_claim(claim, load_product(), section="질병급여형").estimates
+    # 07.06: 12,000 + 3,001 / 07.09: 3,000 + 4,000 / 07.13: 3,000 + 4,000 (나머지 1원은 첫 방문에)
+    assert [(v.date, v.covered) for v in est.visits] == [
+        ("07.06", 15001),
+        ("07.09", 7000),
+        ("07.13", 7000),
+    ]
+    assert [v.payable for v in est.visits] == [5001, 0, 0]
+    assert not any("추정" in n for n in est.notes)
+
+    # 치료일 목록이 없어도 기간의 시작일·끝일을 방문일로 써서 같은 결과
+    plain = RECEIPT_OUT.replace("2026.07.09", "2026.07.13")
+    (est,) = link_claim(
+        build_claims(parse_documents("o.pdf", plain + detail))[0],
+        load_product(),
+        section="질병급여형",
+    ).estimates
+    assert [v.date for v in est.visits] == ["07.06", "07.09", "07.13"]
+
+    # 일수가 알려진 방문일보다 많으면 날짜를 모르는 방문으로 두고 추정이라고 알림
+    more = detail.replace("1 3 30,000 9,001", "1 5 30,000 9,001")
+    (est,) = link_claim(
+        build_claims(parse_documents("o.pdf", plain + more))[0],
+        load_product(),
+        section="질병급여형",
+    ).estimates
+    assert len(est.visits) == 5 and sum(v.date.startswith("미상") for v in est.visits) == 2
+    assert any("추정" in n for n in est.notes)
+
+
+def test_stage_from_diagnosis_shown_for_judgement():
+    from coverage_map.linker import DEFAULT_PRODUCT
+
+    product = load_product(DEFAULT_PRODUCT.parent / "cancer_2404_diagnosis_draft.json")
+    (claim,) = build_claims(parse_documents("dx.pdf", DIAGNOSIS))
+    links = link_claim(claim, product).links
+    assert all(x.status == "check" for x in links) and len(links) == 4
+    assert all(any(n.startswith("서류의 병기: pT1c pN1a") for n in x.notes) for x in links)

@@ -182,12 +182,23 @@ def test_diagnosis_links_to_fixed_benefit_by_kcd():
     product = load_product(DEFAULT_PRODUCT.parent / "cancer_2404_diagnosis_draft.json")
     claim = build_claim([parse_document("x.pdf", _diagnosis("C50.9"))])
     cmap = link_claim(claim, product)
+    # 유방암은 병기에 따라 대상이 달라져 모두 '판단 필요', 소액암(초기유방암)도 후보로 함께 보임
     assert [(link.status, link.rule.name) for link in cmap.links] == [
-        ("linked", "암진단보험금Ⅰ"),
-        ("linked", "암진단보험금Ⅱ"),
-        ("linked", "암진단보험금Ⅲ"),
+        ("check", "암진단보험금Ⅰ"),
+        ("check", "암진단보험금Ⅱ"),
+        ("check", "암진단보험금Ⅲ"),
+        ("check", "소액암진단보험금 (초기유방암·경계성종양·중증 이외 갑상선암)"),
     ]
+    assert cmap.links[0].notes[0].startswith("판단 필요: 병기·조직형에 따라")
+    assert cmap.links[0].notes[1] == "서류에서 병기를 찾지 못했습니다."
     assert "가입금액의 40%" in cmap.links[0].notes
+    # 위암(C16)은 병기로 갈리는 보장이 없어 Ⅰ 은 바로 연결, Ⅱ·Ⅲ 은 제외 대상 확인만
+    gastric = link_claim(build_claim([parse_document("x.pdf", _diagnosis("C16.9"))]), product)
+    assert [(link.status, link.rule.name) for link in gastric.links] == [
+        ("linked", "암진단보험금Ⅰ"),
+        ("check", "암진단보험금Ⅱ"),
+        ("check", "암진단보험금Ⅲ"),
+    ]
     assert cmap.links[0].sources[0].appendix == "별표 1"
     dot = to_dot(cmap)
     assert dot.count("진단서 질병코드") == 1  # 진단 하나는 칸 하나

@@ -56,12 +56,24 @@ class Link:
 
 
 @dataclass
+class Visit:
+    """통원 1회 (방문일 하루)의 참고 계산."""
+
+    date: str  # 'MM.DD' 또는 날짜를 모르면 '미상 1'
+    covered: int
+    deductible: int
+    payable: int
+    capped: bool = False  # 통원 1회(1일) 한도 적용
+
+
+@dataclass
 class Estimate:
     rule: BenefitRule
     covered: int  # 대상 의료비 (환자 부담)
     deductible: int
     payable: int
     notes: list[str]
+    visits: list[Visit] = field(default_factory=list)  # 방문일별 계산 (통원, 날짜가 있는 서류)
 
 
 @dataclass
@@ -173,6 +185,20 @@ def _rule_notes(rule: BenefitRule) -> list[str]:
     return notes
 
 
+# 진단 코드(KCD)만으로 정할 수 없어 서류를 읽고 판단해야 하는 조건 (AI 판단 항목 후보)
+JUDGEMENT_TYPES = ("stage_criteria", "excluded_code")
+
+
+def _judgements(rule: BenefitRule) -> list[str]:
+    return [s.description for s in rule.special_conditions if s.type in JUDGEMENT_TYPES]
+
+
+def _judge_notes(conditions: list[str], stage: str | None) -> list[str]:
+    notes = ["판단 필요: " + " / ".join(conditions)]
+    notes.append(f"서류의 병기: {stage}" if stage else "서류에서 병기를 찾지 못했습니다.")
+    return notes
+
+
 def _diagnosis_links(claim: Claim, product: Product, section: str | None) -> list[Link]:
     """진단서의 질병코드(KCD) → 진단 보장(claim_reason=diagnosis)의 담보코드 KCD 범위로 연결 (정액형)."""
     codes = {c.code: c for c in product.coverage_codes}
@@ -185,6 +211,13 @@ def _diagnosis_links(claim: Claim, product: Product, section: str | None) -> lis
     if not risks:
         return []
     src_doc = next((d.filename for d in claim.docs if d.kind == "DIAGNOSIS"), "")
+    stages = list(dict.fromkeys(d.fields["병기"] for d in claim.docs if d.fields.get("병기")))
+    # 진단서가 여러 장이고 병기가 서로 다르면 모두 보여 줌 (어느 쪽이 맞는지는 사람이 확인)
+    stage = (
+        ("서류마다 다름 → " + " / ".join(stages))
+        if len(stages) > 1
+        else (stages[0] if stages else None)
+    )
     links = []
     for code in claim.kcd:
         item = Item(f"진단 {code}", "diagnosis", 0, 0, src_doc, 0)
@@ -193,11 +226,45 @@ def _diagnosis_links(claim: Claim, product: Product, section: str | None) -> lis
             cc = codes.get(risk.coverage_code or "")
             if cc and any(kcd_in(code, k.start, k.end) for k in cc.kcd):
                 for rule in risk.rules:
+                    judge = _judgements(rule)
+                    notes = [cc.name, *_rule_notes(rule)]
+                    if judge:  # 진단 코드만으로 정할 수 없는 조건 → 사람·AI 판단
+                        notes = [*_judge_notes(judge, stage), *notes]
                     matched.append(
-                        Link(item, "linked", rule=rule, notes=[cc.name, *_rule_notes(rule)])
+                        Link(item, "check" if judge else "linked", rule=rule, notes=notes)
                     )
         if matched:
+            # 담보코드 없이 병기·조직형으로만 정해지는 진단 보장(소액암 등) 중, 이 진단이 속한
+            # 담보코드 이름(유방암·갑상선암 …)이 규칙 이름에 나오는 것을 후보로 함께 보여 줌
+            names = {
+                cc.name.split(" ")[0].split("(")[0]
+                for cc in codes.values()
+                if any(kcd_in(code, k.start, k.end) for k in cc.kcd)
+            }
+            candidates = [
+                rule
+                for risk in risks
+                for rule in ([] if risk.coverage_code else risk.rules)
+                if _judgements(rule) and any(len(n) >= 2 and n in rule.name for n in names)
+            ]
+            if candidates:  # 병기에 따라 '암'이 아닌 쪽으로 분류될 수 있음 → 전부 판단 대상
+                for link in matched:
+                    if link.status == "linked":
+                        link.status = "check"
+                        link.notes = [
+                            "판단 필요: 병기·조직형에 따라 이 보장이 아니라 "
+                            + ", ".join(r.name for r in candidates)
+                            + " 대상일 수 있습니다.",
+                            f"서류의 병기: {stage}"
+                            if stage
+                            else "서류에서 병기를 찾지 못했습니다.",
+                            *link.notes,
+                        ]
             links += matched
+            links += [
+                Link(item, "check", rule=rule, notes=_judge_notes(_judgements(rule), stage))
+                for rule in candidates
+            ]
         else:
             uncoded = [r for r in risks if not r.coverage_code]
             note = f"진단 {code} 에 맞는 진단 보장(담보코드 KCD)을 찾지 못했습니다."
@@ -328,11 +395,95 @@ def link_claim(
         links.append(Link(item, "linked", rule=rule, notes=_rule_notes(rule)))
 
     links += _diagnosis_links(claim, product, section)
-    return CoverageMap(claim, product, links, claim_excl, _estimates(links))
+    return CoverageMap(claim, product, links, claim_excl, _estimates(links, claim))
 
 
-def _estimates(links: list[Link]) -> list[Estimate]:
-    """규칙별 참고 계산 (한 번의 진료 건 기준)."""
+def _md(date: str) -> tuple[int, int]:
+    m, d = date.split(".")
+    return int(m), int(d)
+
+
+def _row_dates(item: Item, known: list[str], period_end: str | None) -> tuple[list[str], bool]:
+    """세부내역 한 줄(일자 + 일수) → 방문일 목록, 추정 여부.
+
+    '07.06' 1일 → 그날. '07.09~08.06' 9일 → 그 기간의 알려진 방문일 9개 (수가 맞으면 확정).
+    알려진 방문일이 더 많으면 고르게 골라 추정, 모자라면 '미상 n' 으로 채웁니다.
+    """
+    spec, n = item.date or "", max(1, item.days)
+    start, _, end = spec.partition("~")
+    if "~" not in spec and n == 1:
+        return [start], False
+    end = end or period_end or "12.31"
+    inside = [d for d in known if _md(start) <= _md(d) <= _md(end)]
+    if len(inside) == n:
+        return inside, False
+    if len(inside) > n:
+        step = (len(inside) - 1) / (n - 1) if n > 1 else 0
+        return [inside[round(i * step)] for i in range(n)], True
+    return inside + [f"미상 {spec} #{i + 1}" for i in range(n - len(inside))], True
+
+
+def _deductible(rule: BenefitRule, covered: int, copay_rate: tuple[int, int] | None) -> int:
+    d = rule.benefit.deductible
+    assert d is not None
+    cands = [float(a) for a in d.amounts]
+    cands += [covered * r.numerator / r.denominator for r in d.ratios]
+    if d.copay_rate and copay_rate:
+        cands.append(covered * copay_rate[0] / copay_rate[1])
+    if not cands:
+        return 0
+    pick = {"max": max, "min": min, "sum": sum}[d.pick]
+    return int(pick(cands))
+
+
+def _visit_estimate(rule: BenefitRule, group: list[Link], claim: Claim, cap) -> Estimate:
+    """통원: 방문일마다 공제·한도를 따로 적용 (약관: 통원 1회당 공제, 통원 1회(1일)당 한도)."""
+    period_end = claim.period.split("~")[1].strip()[5:] if claim.period else None
+    # 방문일: 서류의 방문일 목록 + 세부내역의 일자 (기간 '07.09~08.06' 은 시작일·끝일도 방문일)
+    dated = set()
+    for link in group:
+        start, _, end = (link.item.date or "").partition("~")
+        dated |= {d for d in (start, end or (period_end if "~" in link.item.date else "")) if d}
+    known = sorted(set(claim.visit_dates) | dated, key=_md)
+    per_visit: dict[str, int] = {}
+    estimated = False
+    for link in group:
+        dates, guess = _row_dates(link.item, known, period_end)
+        estimated |= guess
+        base, extra = divmod(link.item.patient, len(dates))
+        for i, day in enumerate(dates):
+            per_visit[day] = per_visit.get(day, 0) + base + (1 if i < extra else 0)
+    visits = []
+    for day in sorted(
+        per_visit, key=lambda d: (d.startswith("미상"), _md(d) if "." in d[:5] else d)
+    ):
+        covered = per_visit[day]
+        ded = _deductible(rule, covered, claim.copay_rate)
+        pay = max(0, covered - ded)
+        capped = bool(cap and pay > cap.amount)
+        visits.append(Visit(day, covered, ded, cap.amount if capped else pay, capped))
+    notes = [f"방문 {len(visits)}회를 각각 계산 (통원 공제는 1회마다 적용)"]
+    if estimated:
+        notes.append(
+            "일부 방문일은 서류에 날짜가 없어 추정했습니다. 방문일이 달라지면 금액이 바뀝니다."
+        )
+    d = rule.benefit.deductible
+    if d and d.copay_rate:
+        if claim.copay_rate:
+            rate = claim.copay_rate[0] / claim.copay_rate[1]
+            notes.append(f"건강보험 본인부담률 {rate:.1%} (영수증의 본인부담금 ÷ 급여 총액) 반영")
+        else:
+            notes.append("본인부담률 기준 공제는 서류에 본인부담률이 없어 빼고 계산")
+    if any(v.capped for v in visits):
+        unit = "1회" if cap.per == "visit" else "1일"
+        notes.append(f"통원 {unit} 한도 {_won(cap.amount)} 적용 {sum(v.capped for v in visits)}회")
+    covered, payable = sum(v.covered for v in visits), sum(v.payable for v in visits)
+    # 요약의 공제는 실제로 빠진 금액 (대상 − 지급). 방문별 공제금액은 visits 에
+    return Estimate(rule, covered, covered - payable, payable, notes, visits)
+
+
+def _estimates(links: list[Link], claim: Claim) -> list[Estimate]:
+    """규칙별 참고 계산. 통원은 날짜가 있는 서류면 방문일별로, 아니면 진료 건 1회로 계산."""
     out = []
     groups: dict[str, list[Link]] = {}
     for link in links:
@@ -342,14 +493,23 @@ def _estimates(links: list[Link]) -> list[Estimate]:
         rule = group[0].rule
         assert rule is not None
         b = rule.benefit
+        cap = next(
+            (
+                a
+                for a in (rule.conditions.limit.amounts if rule.conditions.limit else [])
+                if a.per in ("visit", "day")
+            ),
+            None,
+        )
+        if b.deductible and claim.setting == "outpatient" and all(link.item.date for link in group):
+            out.append(_visit_estimate(rule, group, claim, cap))
+            continue
         covered = sum(link.item.patient for link in group)
         notes = []
         if b.deductible:
-            cands = list(b.deductible.amounts)
-            cands += [covered * r.numerator / r.denominator for r in b.deductible.ratios]
-            ded = int(max(cands) if b.deductible.pick == "max" else min(cands)) if cands else 0
+            ded = _deductible(rule, covered, claim.copay_rate)
             payable = max(0, covered - ded)
-            if b.deductible.copay_rate:
+            if b.deductible.copay_rate and not claim.copay_rate:
                 notes.append("본인부담률 기준 공제는 서류에 본인부담률이 없어 빼고 계산")
         else:
             ratio = b.ratio.numerator / b.ratio.denominator if b.ratio else 1.0
@@ -360,14 +520,6 @@ def _estimates(links: list[Link]) -> list[Estimate]:
                     f"자기부담 연간 {_won(b.copay_cap_annual)} 상한은 연간 누계로 따로 확인"
                 )
         # 통원 한도: 약관에 따라 '1회당'(급여) 또는 '1일당'(비급여). 서류 한 건 = 통원 1회·1일로 봄
-        cap = next(
-            (
-                a
-                for a in (rule.conditions.limit.amounts if rule.conditions.limit else [])
-                if a.per in ("visit", "day")
-            ),
-            None,
-        )
         if cap and payable > cap.amount:
             unit = "1회" if cap.per == "visit" else "1일"
             notes.append(f"통원 {unit} 한도 {_won(cap.amount)} 적용")

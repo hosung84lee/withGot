@@ -321,6 +321,25 @@ if cmap.estimates:
         st.markdown(line)
         for n in e.notes:
             st.caption(f"· {n}")
+        if e.visits:
+            paid = sum(v.payable > 0 for v in e.visits)
+            with st.expander(f"방문일별 계산 ({len(e.visits)}회 중 {paid}회 지급 대상)"):
+                st.dataframe(
+                    [
+                        {
+                            "방문일": v.date,
+                            "대상(원)": v.covered,
+                            "공제(원)": v.deductible,
+                            "참고 지급(원)": v.payable,
+                            "비고": "한도 적용"
+                            if v.capped
+                            else ("" if v.payable else "공제금액 이하"),
+                        }
+                        for v in e.visits
+                    ],
+                    hide_index=True,
+                    width="stretch",
+                )
 
 # --- 근거 조항 (약관 PDF 원문) ---
 st.subheader("근거 조항")

@@ -82,6 +82,10 @@ class Claim:
     kcd: list[str]
     items: list[Item]
     warnings: list[str]
+    period: str | None = None  # 진료기간 '2026.07.06 ~ 2026.08.06'
+    visit_dates: list[str] = field(default_factory=list)  # 서류에서 확인한 방문일 'MM.DD'
+    # 건강보험 본인부담률 = 급여 본인부담금 ÷ (급여 본인부담금 + 공단부담금). (분자, 분모)
+    copay_rate: tuple[int, int] | None = None
 
 
 def _money(s: str) -> int | None:
@@ -188,18 +192,30 @@ def build_claim(docs: list[MedicalDoc]) -> Claim:
         warnings.append(
             f"영수증 환자 부담 {receipt_total:,}원과 세부내역서 합계 {detail_total:,}원이 다릅니다."
         )
-    multi = [i for i in detail_items if i.days > 1 or "~" in (i.date or "")]
-    if setting == "outpatient" and multi:
-        warnings.append(
-            "여러 날 통원이 한 영수증에 합쳐져 있습니다. 통원 공제는 방문 1회마다 적용되므로 "
-            "아래 참고 계산(합산 기준)은 실제와 다를 수 있습니다. 방문일별 계산은 아직 지원하지 않습니다."
-        )
     if not detail_items and any(d.kind == "RECEIPT" for d in docs):
         warnings.append(
             "세부내역서가 없어 치료 항목별로 연결하지 못합니다. 세부내역서를 함께 올려 주세요."
         )
 
+    visit_dates = sorted(
+        {day.strip() for d in docs for day in d.fields.get("방문일", "").split(",") if day.strip()}
+    )
+    receipt = next((d for d in docs if d.kind == "RECEIPT"), None)
+    span = (
+        re.findall(r"\d{4}\.(\d{2})\.(\d{2})", receipt.fields.get("진료기간", ""))
+        if receipt
+        else []
+    )
+    if len(span) == 2:  # 함께 올라온 다른 진료 건 서류의 날짜는 뺌 (진료기간 안의 방문일만)
+        visit_dates = [d for d in visit_dates if span[0] <= tuple(d.split(".")) <= span[1]]
+    copay = _money(receipt.fields.get("급여 본인부담 합계", "")) if receipt else None
+    insurer = _money(receipt.fields.get("공단 부담 합계", "")) if receipt else None
+    copay_rate = (copay, copay + insurer) if copay and insurer is not None else None
+
     return Claim(
+        period=receipt.fields.get("진료기간") if receipt else None,
+        visit_dates=visit_dates,
+        copay_rate=copay_rate,
         docs=docs,
         case_id=next(iter(cases)) if len(cases) == 1 else None,
         visit_date=first("진료일"),
