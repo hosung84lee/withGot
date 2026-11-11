@@ -33,6 +33,7 @@ SYSTEM = """너는 한국 보험 약관에서 보상 규칙을 뽑아 표준 JSO
   source.part 는 입력의 '약관:' 값을, source.section 은 '보장종목:' 값을 그대로 쓴다.
   source.article 은 '### ' 뒤의 조 표기(예: 제3조)를, paragraph 는 항 번호(①=1)를 쓴다.
   source.quote 는 그 조 본문에서 글자 그대로 복사한 짧은 문구다 (바꿔 쓰거나 요약하지 않는다).
+  근거가 별표(### 별표 1 …)에 있으면 article 대신 "appendix": "별표 1" 을 쓰고 quote 는 그 별표에서 복사한다.
 - 한도처럼 다른 조(예: 제5조)에 근거가 있으면 extra_sources 에 그 조를 추가한다.
 - status 는 모두 "needs_review" 로 둔다 (근거 확인은 따로 한다).
 """
@@ -49,7 +50,10 @@ PROMPT = """다음 약관 조문에서 보상 규칙과 보상하지 않는 사�
           "facility": "의료기관 조건 (없으면 null)",
           "limit": {{"amounts": [{{"amount": 200000, "per": "visit|day|stay|year|daily_average|event",
                                   "selectable": true}}]}},
-          "extension": {{"days": 180, "max_visits": 90, "max_visit_days": null}}
+          "extension": {{"days": 180, "max_visits": 90, "max_visit_days": null}},
+          "exemption_days": 90,
+          "reduction": {{"days": 365, "ratio": {{"numerator": 50, "denominator": 100}}}},
+          "occurrence": "first|each"
         }},
         "special_conditions": [{{"type": "예: no_health_insurance", "description": "..."}}],
         "benefit": {{"type": "actual_cost|rate|fixed", "base": "medical_cost|sum_insured",
@@ -76,6 +80,19 @@ PROMPT = """다음 약관 조문에서 보상 규칙과 보상하지 않는 사�
 지침
 - 쓰지 않는 항목은 빼거나 null 로 둔다.
 - 입원·통원처럼 보상 방식이 다르면 risk 를 나눈다. 의료기관별로 공제금액이 다르면 rule 을 나눈다.
+- 정액형(진단·수술·사망 보험금, 가입금액의 몇 %):
+  · 지급 금액은 보통 '보험금 지급기준표' 별표에 있다. benefit 은 type=rate, base=sum_insured, ratio 는
+    감액이 없을 때(예: 계약일부터 1년 초과)의 비율을 쓰고, source 는 그 별표의 금액 문구로 한다.
+  · '계약일부터 1년 이내 50%' 같은 감액은 conditions.reduction {{days: 365, ratio: 50/100}} 로 쓴다.
+  · 암보장개시일처럼 '계약일부터 그 날을 포함하여 90일이 지난날의 다음날' 부터 보장하면 exemption_days: 90.
+    계약일부터 바로 보장하는 보험금에는 쓰지 않는다.
+  · '최초 1회에 한함' 은 occurrence: "first".
+  · 지급사유마다 risk 를 나눈다 (암진단보험금Ⅰ·Ⅱ·Ⅲ, 소액암진단보험금 …). 지급 금액이 다르면 rule 도 나눈다.
+  · 대상 질병이 분류표 별표로 정해지면 coverage_codes 에 그 별표의 KCD 범위를 쓰고 risk.coverage_code 로 잇는다.
+  · KCD 만으로 정할 수 없는 조건(병기·조직형 기준, 대상 중 일부 제외, 성별, 재발 시 부지급)은 값을 지어내지 말고
+    special_conditions 에 type 과 원문에 근거한 description 으로 남긴다
+    (type 예: stage_criteria, excluded_code, sex, each_once, prior_payment).
+  · 지급사유 조·보장개시일·감액 조는 extra_sources 에 넣는다.
 - extension(계약 종료 후 계속 중인 입원·통원 보상): 통원 한도가 '최대 90회' 면 max_visits, '최대 90일' 이면
   max_visit_days 에 쓴다 (단위를 바꿔 쓰지 않는다).
 - 건강보험을 적용받지 못하는 경우처럼 조건이 다른 보상은 별도 rule 로, special_conditions 에 조건을 쓴다.

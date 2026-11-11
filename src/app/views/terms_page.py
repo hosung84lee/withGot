@@ -9,6 +9,7 @@ from app import compare_view, coverage_view, terms_viewer
 from backend.config import get_settings
 from backend.storage import get_document, list_documents
 from coverage_extract.extractor import failed_issues
+from coverage_extract.gaps import KIND_LABEL, analyze_gaps
 from coverage_extract.grounding import GroundingReport
 from coverage_map import policy
 from schema.document import DocumentKind
@@ -265,8 +266,8 @@ if partial:
 if coverage_note:
     st.info(coverage_note)
 
-t_viewer, t_cov, t_tables, t_struct, t_valid, t_raw = st.tabs(
-    ["구조 뷰어", "사고보장 데이터", "사고보장 테이블", "조 목록", "검증", "JSON"]
+t_viewer, t_cov, t_tables, t_gaps, t_struct, t_valid, t_raw = st.tabs(
+    ["구조 뷰어", "사고보장 데이터", "사고보장 테이블", "스키마 갭", "조 목록", "검증", "JSON"]
 )
 
 with t_viewer:
@@ -310,6 +311,67 @@ with t_tables:
             if rows:
                 with st.expander(f"{name} ({len(rows)}행)", expanded=name == "benefit_rule"):
                     st.dataframe(rows, hide_index=True, width="stretch")
+
+with t_gaps:
+    st.caption(
+        "약관 원문에는 있는데 지금 사고보장 스키마로 담지 못하는 내용입니다 (규칙으로 찾음, AI 미사용). "
+        "스키마에 필드·구조를 더해야 하는 후보 목록으로 씁니다."
+    )
+    gaps = analyze_gaps(doc, product)
+    if not gaps.bundles:
+        st.info("보장 내용(보상내용·보험금의 지급사유) 조를 찾지 못해 분석할 묶음이 없습니다.")
+    elif not gaps.findings:
+        st.success("등록된 개념 갭이 이 약관에서는 나오지 않았습니다.")
+    else:
+        kinds = [f.concept.kind for f in gaps.findings]
+        g1, g2, g3 = st.columns(3)
+        g1.metric("구조 확장 필요", kinds.count("structure"))
+        g2.metric("필드 추가 필요", kinds.count("field"))
+        g3.metric("부분 표현 (글로만 담김)", kinds.count("partial"))
+        st.dataframe(
+            [
+                {
+                    "구분": KIND_LABEL[f.concept.kind],
+                    "개념": f.concept.name,
+                    "원문": f"{len(f.hits)}곳",
+                    "지금 표현": f.concept.now,
+                    "제안": f.concept.proposal,
+                    "예": f"{f.hits[0].unit.label}: {f.hits[0].snippet}",
+                }
+                for f in gaps.findings
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+    if gaps.coverage:
+        st.markdown("**근거로 쓰이지 않은 원문** — 사고보장 데이터가 인용하지 않은 항·호와 이유")
+        for cov in gaps.coverage:
+            st.caption(
+                f"{cov.bundle}: 항·호 {cov.units}개 중 {cov.cited}개 인용 "
+                f"({cov.cited / cov.units:.0%})"
+                if cov.units
+                else cov.bundle
+            )
+        reason_label = {
+            "schema_gap": "스키마 확장 필요",
+            "uncited_value": "근거 보완 (값은 있음)",
+            "extraction_gap": "추출 보완",
+        }
+        st.dataframe(
+            [
+                {
+                    "이유": reason_label[x.reason],
+                    "위치": x.unit.label,
+                    "개념·값": ", ".join(x.concepts or x.values),
+                    "원문": " ".join(x.unit.text.split())[:120],
+                }
+                for x in gaps.uncovered
+            ],
+            hide_index=True,
+            width="stretch",
+        )
+    for x in gaps.unfilled:
+        st.warning(f"빈 필드 · {x.unit.label}: {x.message}")
 
 with t_struct:
     if doc.preamble:

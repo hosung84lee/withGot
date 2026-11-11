@@ -6,6 +6,8 @@ LLM 이 붙이는 id·이름·인용문은 매번 달라서, 규칙은 내용으
 보상 제외는 (종류, KCD 범위 또는 설명) 으로 짝을 맞춥니다.
 """
 
+import re
+
 from pydantic import BaseModel
 
 from schema.coverage import BenefitRule, Exclusion, Product, Risk
@@ -24,8 +26,19 @@ class CompareResult(BaseModel):
         return len(self.matched) / total if total else 1.0
 
 
-def _rule_key(risk: Risk, rule: BenefitRule) -> tuple:
+def _fixed_name(rule: BenefitRule) -> str:
+    """정액형 규칙 이름에서 괄호 설명을 뺀 보험금 이름 ('소액암진단보험금 (초기유방암…)' → '소액암진단보험금')."""
+    return re.sub(r"\s+", "", rule.name.split("(")[0])
+
+
+def _rule_key(risk: Risk, rule: BenefitRule, repeated: frozenset[str] = frozenset()) -> tuple:
     b = rule.benefit
+    if b.type in ("rate", "fixed"):
+        # 정액형은 약관의 보험금 이름으로 짝을 맞춤 (암진단보험금Ⅰ·Ⅱ·Ⅲ). 이름이 같은 규칙이
+        # 여러 개면(소액암진단보험금 2종) 지급 비율까지 봄
+        name = _fixed_name(rule)
+        tie = round(b.ratio.value, 4) if (name in repeated and b.ratio) else None
+        return ("fixed", risk.claim_reason, name, tie)
     return (
         risk.section,
         risk.claim_reason,
@@ -47,15 +60,21 @@ def _rule_values(rule: BenefitRule) -> dict:
         "연장 보상": (c.extension.days, c.extension.max_visits, c.extension.max_visit_days)
         if c.extension
         else None,
+        "면책기간": c.exemption_days,
+        "감액": (c.reduction.days, round(c.reduction.ratio.value, 4)) if c.reduction else None,
+        "최초 1회": c.occurrence,
     }
 
 
 def _rules(p: Product) -> dict[tuple, tuple[str, BenefitRule]]:
     out = {}
+    fixed = [_fixed_name(r) for r in p.rules() if r.benefit.type in ("rate", "fixed")]
+    repeated = frozenset(n for n in fixed if fixed.count(n) > 1)
     for cov in p.coverages:
         for risk in cov.risks:
             for rule in risk.rules:
-                out[_rule_key(risk, rule)] = (f"{risk.section or ''} {rule.name}".strip(), rule)
+                key = _rule_key(risk, rule, repeated)
+                out[key] = (f"{risk.section or ''} {rule.name}".strip(), rule)
     return out
 
 

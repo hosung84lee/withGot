@@ -9,6 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from coverage_extract import build_bundles
+from coverage_extract.compare import compare_products
+from coverage_extract.gaps import analyze_gaps
 from coverage_extract.grounding import find_appendix, ground_product, numbers_in
 from coverage_store import connect, load_product, save_product
 from schema.coverage import Product, SourceRef
@@ -153,3 +156,86 @@ def test_extension_visit_days_vs_visits():
     conn = connect()
     save_product(conn, product({"max_visit_days": 90}), "p")
     assert load_product(conn, "p").rules()[0].conditions.extension.max_visit_days == 90
+
+
+# ---------------------------------------------------------------- 정액형 묶음·비교·갭
+
+
+def test_fixed_bundle_includes_own_payment_table():
+    """정액형 묶음에는 그 약관의 지급기준표가 들어가고, 재해분류표·다른 약관 별표는 빠짐."""
+    bundles = {b.key: b for b in build_bundles(parse_terms(TWO_PARTS))}
+    main = bundles["테스트 암보험 약관"]
+    assert [x.label for x in main.appendices] == ["별표 1 보험금 지급기준표"]
+    body = main.render()
+    assert "### 별표 1 보험금 지급기준표" in body and "보험가입금액의 40%" in body
+    assert "재해분류표" not in body and "암사망보험금" not in body
+
+
+def test_fixed_rules_matched_by_benefit_name():
+    """정액형 규칙은 보험금 이름으로 짝지음 (청구사유가 모두 diagnosis 라 순서로는 못 맞춤)."""
+    golden = draft()
+    shuffled = draft()
+    shuffled.coverages[0].risks.reverse()
+    assert compare_products(shuffled, golden).score == 1.0
+
+    wrong = draft()
+    rules = {r.name: r for r in wrong.rules()}
+    rules["암진단보험금Ⅲ"].benefit.ratio.numerator = 100
+    rules["암진단보험금Ⅰ"].conditions.exemption_days = None
+    rules["암진단보험금Ⅱ"].conditions.reduction = None
+    result = compare_products(wrong, golden)
+    text = "\n".join(result.different)
+    assert len(result.different) == 3 and not result.missing and not result.extra
+    assert "암진단보험금Ⅲ" in text and "면책기간" in text and "감액" in text
+
+
+CANCER_TERMS = """보험약관
+테스트 암보험 약관
+제1조 [목적]
+이 계약은 암을 보장합니다.
+제2조 [암의 정의 및 진단 확정]
+① 이 계약에 있어서 "초기유방암"이라 함은 별표3에서 정한 질병 중 AJCC 암병기설정매뉴얼 제8판에서 정한 1기에 해당하는 경우를 말합니다.
+② 이 계약에 있어서 "초기 이외 유방암"이라 함은 "유방암"에 해당하는 질병 중 "초기유방암"을 제외한 나머지 유방암을 말합니다.
+③ 암의 진단 확정은 병리과 전문의 자격증을 가진 자에 의하여 내려져야 합니다.
+제3조 [보험금의 지급사유]
+① 피보험자가 암보장개시일 이후에 암으로 진단 확정 되었을 경우 암진단보험금을 지급합니다. (단, 최초 1회에 한하며, 자궁암은 피보험자가 여성인 경우에 한합니다.)
+제4조 [보험금 지급에 관한 세부규정]
+① 암으로 진단 확정 되었을 때에는 차회 이후의 보험료 납입을 면제합니다.
+② 이미 암진단보험금이 지급된 암으로 인한 경우(종양세포가 잔존하거나 재발 또는 전이된 경우 포함)에 회사는 해당 보험금을 지급하지 않습니다.
+[별표 1] 보험금 지급기준표
+암진단보험금 보험가입금액의 100%
+"""
+
+
+def test_fixed_concepts_found():
+    found = {f.concept.code for f in analyze_gaps(parse_terms(CANCER_TERMS)).findings}
+    assert found == {
+        "STAGE_CRITERIA",
+        "CODE_SUBTRACTION",
+        "DIAGNOSIS_METHOD",
+        "INSURED_SEX",
+        "PREMIUM_WAIVER",
+        "RECURRENCE",
+    }
+
+
+@pytest.mark.pdf
+def test_real_cancer_2404_bundle_and_gaps():
+    pdf = next(POLICIES.glob("삼성생명_인터넷암보험_2404*.pdf"), None)
+    if pdf is None:
+        pytest.skip("인터넷암보험 2404 약관 PDF 없음")
+    doc = parse_terms(pdf_to_text(pdf))
+    main = next(b for b in build_bundles(doc) if b.section is None and "약관" in b.key)
+    assert (len(main.articles), len(main.appendices)) == (11, 9)  # 정의 조 + 별표 1~9
+    assert len(main.render()) < 30000
+
+    report = analyze_gaps(doc, draft())
+    fixed = {f.concept.code for f in report.findings}
+    assert len(fixed) == 10 and "STAGE_CRITERIA" in fixed and "GROUPED_OCCURRENCE" in fixed
+    assert [(c.units, c.cited) for c in report.coverage] == [(60, 17)]
+    reasons = [x.reason for x in report.uncovered]
+    assert (
+        reasons.count("schema_gap"),
+        reasons.count("uncited_value"),
+        reasons.count("extraction_gap"),
+    ) == (38, 1, 4)

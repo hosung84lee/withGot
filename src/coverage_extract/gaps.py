@@ -37,7 +37,8 @@ class Concept(BaseModel):
     exclusion_only: bool = False  # 보상하지 않는 사항 조에서만 찾음
 
 
-# 실손 2605 묶음 8개에서 실제로 나온 개념으로 만든 목록. 새 약관에서 새 개념이 보이면 여기에 추가합니다.
+# 실손 2605 묶음 8개와 인터넷암 2404 주계약에서 실제로 나온 개념으로 만든 목록.
+# 새 약관에서 새 개념이 보이면 여기에 추가합니다.
 CONCEPTS: list[Concept] = [
     Concept(
         code="SHARED_LIMIT",
@@ -169,6 +170,93 @@ CONCEPTS: list[Concept] = [
         proposal="추출 프롬프트에 KCD 차수·이후 개정 포함 규칙을 넣고 kcd_version 을 채움",
         patterns=[r"제\d+차한국표준질병사인분류"],
     ),
+    # ---- 정액형(암보험) 약관에서 나온 개념: 인터넷암 2404 주계약 기준
+    Concept(
+        code="STAGE_CRITERIA",
+        name="병기·조직형으로 나누는 대상 질병",
+        kind="structure",
+        now="담보코드는 KCD 범위만. '유방암 중 TNM 1기', '갑상선암 중 수질성·역형성암'은 "
+        "special_conditions 글로만 남아 계산·심사에서 자동 판정 못 함",
+        proposal="CoverageCode.criteria{system: AJCC, edition, stage | histology | depth, text}",
+        patterns=[r"AJCC암병기설정매뉴얼", r"수질성암", r"점막하층\(submucosa\)까지는"],
+    ),
+    Concept(
+        code="CODE_SUBTRACTION",
+        name="담보코드에서 일부 질병 제외",
+        kind="structure",
+        now="KcdRange 는 포함 범위만. '암 중 기타피부암·초기유방암 … 제외', '유방암 중 초기유방암을 "
+        "제외한 나머지'를 담보코드끼리의 관계로 못 담음",
+        proposal="CoverageCode.excludes: [code] (다른 담보코드를 빼는 관계)",
+        patterns=[r"있어서암에해당하지않습니다", r"에해당하는질병중.{2,15}을제외한나머지"],
+    ),
+    Concept(
+        code="GROUPED_OCCURRENCE",
+        name="묶음 단위 지급 횟수 (합산·각각 1회)",
+        kind="structure",
+        now="occurrence='first' 는 규칙 하나 기준. '셋 중 최초 1회', '7가지 분류질병마다 각각 1회', "
+        "'Ⅰ·Ⅱ·Ⅲ 을 합하여 암진단보험금'을 못 담음",
+        proposal="OccurrenceGroup{id, members:[rule_id | code], count, per: group | each_member}",
+        patterns=[r"중최초1회", r"각각1회의진단확정에한", r"을합하여암진단보험금이라"],
+    ),
+    Concept(
+        code="PREMIUM_WAIVER",
+        name="보험료 납입면제",
+        kind="structure",
+        now="없음. 보험금이 아닌 급부(차회 이후 보험료 납입면제)를 규칙으로 담을 곳이 없음",
+        proposal="Benefit.type='premium_waiver' + 사유(장해지급률 합산 50% 이상, 암 진단)",
+        patterns=[r"보험료의?납입을면제", r"보험료의?납입이면제", r"보험료납입면제", r"장해지급률"],
+    ),
+    Concept(
+        code="INSURED_SEX",
+        name="피보험자 성별 조건",
+        kind="field",
+        now="special_conditions 글(type: sex)로만 저장",
+        proposal="Condition.insured{sex: F | M} — 담보코드별로 지정",
+        patterns=[r"피보험자가(?:여성|남성)인경우에한"],
+    ),
+    Concept(
+        code="RECURRENCE",
+        name="같은 질병의 재발·전이·잔존 부지급과 재보장",
+        kind="field",
+        now="special_conditions 글(type: prior_payment). 범위(같은 암)와 재보장 조건(5년 무진단·무치료)이 없음",
+        proposal="SpecialCondition{type: same_disease, includes: [recurrence, metastasis, residual], "
+        "reset_after_years, reset_requires}",
+        patterns=[r"잔존하거나재발또는전이된경우포함\)에회사는해당보험금을", r"\d+년이지나는동안"],
+    ),
+    Concept(
+        code="PRIMARY_SITE",
+        name="전이암의 원발부위 기준 분류",
+        kind="field",
+        now="없음. C77~C80(이차성) 진단 코드를 원발부위 코드로 바꿔 판정한다는 규칙이 빠짐",
+        proposal="CoverageCode.classify_by: primary_site (대상 KCD: C77~C80)",
+        patterns=[r"원발부위\(최초발생한부위\)를기준으로분류"],
+    ),
+    Concept(
+        code="DIAGNOSIS_METHOD",
+        name="진단 확정 방법",
+        kind="field",
+        now="special_conditions type='diagnosis_confirmed' 만. 누가(병리과 전문의), 어떤 검사로, "
+        "검사가 불가능할 때의 대체 증빙이 빠짐",
+        proposal="DiagnosisRequirement{by, methods:[조직검사 …], confirmed_at, fallback}",
+        patterns=[r"병리과(?:또는진단검사의학과)?전문의자격증", r"에따른진단이가능하지않을때"],
+    ),
+    Concept(
+        code="DEEMED_DIAGNOSIS",
+        name="사망 후 확인 시 진단일 간주·기지급액 차감",
+        kind="field",
+        now="없음. 사망일을 진단 확정일로 보는 규칙과 이미 지급한 계약자적립액 차감이 빠짐",
+        proposal="BenefitRule.deemed_event{when: death_confirmed, date: death_date} + Benefit.offset",
+        patterns=[r"사망일을진단확정일로보고", r"이미지급된계약자적립액을차감"],
+    ),
+    Concept(
+        code="START_DATE_BASIS",
+        name="보장개시일·감액기간의 기준일 (최초계약·갱신·부활)",
+        kind="partial",
+        now="exemption_days·reduction.days 숫자만. 기준일(최초계약일, 부활일)과 갱신계약에서는 "
+        "면책이 없다는 것을 못 담음",
+        proposal="exemption{days, from: first_contract | reinstatement, on_renewal: 0}, reduction.from",
+        patterns=[r"갱신계약의암보장개시일은갱신일", r"최초계약의계약일부터\d+년이내"],
+    ),
 ]
 CONCEPT_BY_CODE = {c.code: c for c in CONCEPTS}
 
@@ -260,12 +348,18 @@ def units_of(bundle: Bundle) -> list[Unit]:
     return out
 
 
-_LEAD = re.compile(r"다음(?:과같|의|에)")
+_LEAD = re.compile(r"다음(?:과같|의|에|은|중어느)")
+# '제2조의3(…)에서 정한 초기유방암(을 말합니다)' 처럼 다른 조를 가리키기만 하는 문장
+_POINTER = re.compile(
+    r"^(?:이계약에있어서.{1,20}(?:이라함은|은))?제\d+조(?:의\d+)?\([^)]*\)에서정한.{1,20}$"
+)
 
 
 def is_lead(u: Unit) -> bool:
     """'회사는 다음의 … 보상하지 않습니다' 처럼 아래 호를 이끄는 짧은 안내 문장 (담을 내용 없음)."""
     sq = squash(u.text)
+    if _POINTER.match(sq):
+        return True
     return u.item is None and len(sq) < 80 and bool(_LEAD.search(sq))
 
 
@@ -328,6 +422,18 @@ def _quotes_for(product: Product, bundle: Bundle) -> list[str]:
     return quotes
 
 
+def _cited_appendices(product: Product, bundle: Bundle) -> set[str]:
+    """이 묶음의 규칙·담보코드가 근거로 든 별표 번호 ('별표 2' → '2')."""
+    srcs = [s for r in product.rules() for s in [r.source, *r.extra_sources]]
+    srcs += [cc.source for cc in product.coverage_codes if cc.source]
+    return {
+        n
+        for s in srcs
+        if s.part == bundle.part_title and s.appendix
+        for n in re.findall(r"\d+", s.appendix)[:1]
+    }
+
+
 def _has_data(product: Product, bundle: Bundle) -> bool:
     for x in [*product.rules(), *product.exclusions()]:
         if x.source.part == bundle.part_title and x.source.section == bundle.section:
@@ -358,10 +464,14 @@ def citation_coverage(
             for kind, v, label in expected_numbers(r)
         ]
         units = [u for u in units_of(b) if not is_lead(u)]
+        appendices = _cited_appendices(product, b)
         cited = 0
         for u in units:
             sq = squash(u.text)
-            if any(q and q in sq for q in quotes):
+            # 인용문이 이 항·호에 있거나, 이 항·호가 가리키는 별표를 데이터가 근거로 씀 (분류표 → 담보코드)
+            if any(q and q in sq for q in quotes) or (
+                appendices and set(re.findall(r"별표(\d+)", sq)) & appendices
+            ):
                 cited += 1
                 continue
             codes = concepts_at.get(_unit_key(u), [])

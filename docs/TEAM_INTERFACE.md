@@ -101,7 +101,7 @@ KCD·금액·날짜만으로 정할 수 없어서 **서류를 읽고 판단해�
 }
 ```
 
-- `code`: 갭 분석 개념 코드(16종, [coverage_extract.md 5장](coverage_extract.md)) 또는 LLM 이 찾은 새 항목은 `NEW`.
+- `code`: 갭 분석 개념 코드(26종, [coverage_extract.md 5장](coverage_extract.md)) 또는 LLM 이 찾은 새 항목은 `NEW`.
 - `origin`: `gap_rule`(규칙 기반) | `llm`(추출 중 LLM 보고). 둘 다 같은 원문 위치를 가리키면 하나로 합쳐 보여 줌.
 
 ## 5. 계약 ④ 청구정보 (시나리오) — 앱 → 보험금

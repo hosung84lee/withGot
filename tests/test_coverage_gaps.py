@@ -203,7 +203,7 @@ def test_real_silson_2605_gaps():
         (FIXTURES / "silson_2605_disease_covered.json").read_text(encoding="utf-8")
     )
     report = analyze_gaps(parse_terms(pdf_to_text(pdf)), golden)
-    assert len(report.findings) == len(CONCEPTS) == 16  # 실손 2605 에서 만든 목록이라 모두 나옴
+    assert len(report.findings) == 16 and len(CONCEPTS) == 26  # 실손 16종 + 정액형 10종
     assert [(c.units, c.cited) for c in report.coverage] == [(36, 12)]
     reasons = [x.reason for x in report.uncovered]
     assert (
