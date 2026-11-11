@@ -6,7 +6,14 @@ from pathlib import Path
 import streamlit as st
 
 from backend.config import get_settings
-from coverage_map import build_claim, link_claim, parse_document, policy, to_dot
+from coverage_map import (
+    build_claims,
+    claim_label,
+    link_claim,
+    parse_documents,
+    policy,
+    to_dot,
+)
 from coverage_map.documents import KIND_LABEL, PRIVATE_FIELDS
 from coverage_map.linker import STATUS_LABEL, article_label
 from schema.coverage import Product, SourceRef
@@ -217,7 +224,8 @@ with c1:
         "진료 서류 (PDF·TXT, 여러 개)",
         type=["pdf", "txt"],
         accept_multiple_files=True,
-        help="영수증과 세부내역서를 함께 올려야 치료 항목별로 연결됩니다. 진단서는 보상 제외 확인에 씁니다.",
+        help="영수증과 세부내역서를 함께 올려야 치료 항목별로 연결됩니다. 진단서는 보상 제외 확인에 씁니다. "
+        "실제 병원 서식(계산서·영수증, 세부산정내역, 진단서)의 텍스트 PDF 도 읽습니다. 스캔본·사진은 안 됩니다.",
     )
 with c2:
     sample = st.selectbox("또는 가상 샘플 서류", ["(선택 안 함)", *SAMPLES])
@@ -234,8 +242,14 @@ if not docs_input:
     st.info("서류를 올리거나 가상 샘플을 고르면 보장맵이 나옵니다.")
     st.stop()
 
-docs = [parse_document(name, text) for name, text in docs_input]
-claim = build_claim(docs)
+docs = [d for name, text in docs_input for d in parse_documents(name, text)]
+claims = build_claims(docs)
+if len(claims) > 1:  # 한 번에 여러 진료 건(외래 + 입원 등)이 올라온 경우
+    claim = st.selectbox(
+        f"진료 건 ({len(claims)}건이 함께 올라왔습니다)", claims, format_func=claim_label
+    )
+else:
+    claim = claims[0]
 cmap = link_claim(claim, product, section=section, coverage_id=coverage_id)
 
 # --- 요약 ---
