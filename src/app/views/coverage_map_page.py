@@ -114,7 +114,11 @@ if pdf_data is None:
 
 with st.spinner(f"약관 구조화 중… {pdf_name} (처음 한 번은 1분 안팎)"):
     pdf_key = policy.file_hash(pdf_data)
-    terms_doc = _terms(pdf_key, pdf_data)
+    try:
+        terms_doc = _terms(pdf_key, pdf_data)
+    except TextExtractionError as e:  # 손상된 PDF·스캔본 등
+        st.error(f"{pdf_name}: {e}")
+        st.stop()
 golden = policy.golden_for(terms_doc)
 cached = policy.cached_sections(pdf_key)
 

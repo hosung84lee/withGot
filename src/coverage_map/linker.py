@@ -338,16 +338,18 @@ def _estimates(links: list[Link]) -> list[Estimate]:
                 notes.append(
                     f"자기부담 연간 {_won(b.copay_cap_annual)} 상한은 연간 누계로 따로 확인"
                 )
-        visit = next(
+        # 통원 한도: 약관에 따라 '1회당'(급여) 또는 '1일당'(비급여). 서류 한 건 = 통원 1회·1일로 봄
+        cap = next(
             (
-                a.amount
+                a
                 for a in (rule.conditions.limit.amounts if rule.conditions.limit else [])
-                if a.per == "visit"
+                if a.per in ("visit", "day")
             ),
             None,
         )
-        if visit and payable > visit:
-            notes.append(f"통원 1회 한도 {_won(visit)} 적용")
-            payable = visit
+        if cap and payable > cap.amount:
+            unit = "1회" if cap.per == "visit" else "1일"
+            notes.append(f"통원 {unit} 한도 {_won(cap.amount)} 적용")
+            payable = cap.amount
         out.append(Estimate(rule, covered, ded, payable, notes))
     return out

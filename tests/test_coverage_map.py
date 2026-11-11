@@ -195,3 +195,31 @@ def test_diagnosis_links_to_fixed_benefit_by_kcd():
     other = link_claim(build_claim([parse_document("x.pdf", _diagnosis("D05.1"))]), product)
     assert [link.status for link in other.links] == ["check"]
     assert "소액암" in other.links[0].notes[0]
+
+
+def test_per_day_limit_caps_estimate():
+    """비급여 통원 한도는 '통원 1일당 20만원' (per=day). 1회당(visit)처럼 참고 계산에 적용해야 함."""
+    from coverage_map import policy
+
+    golden = load_product()
+    extra = golden.model_copy(deep=True)
+    risk = next(k for k in extra.coverages[0].risks if k.claim_reason == "outpatient")
+    risk.id, risk.section = "p1/질병비급여형/o1", "질병비급여형"
+    rule = risk.rules[0]
+    rule.id, rule.name = "p1/질병비급여형/o1/1", "비급여 통원"
+    rule.conditions.facility = None
+    rule.benefit.cost_type = "non_covered"
+    rule.benefit.deductible.amounts = [50000]
+    rule.benefit.deductible.ratios[0].numerator = 50
+    rule.benefit.deductible.copay_rate = False
+    rule.conditions.limit.amounts[0].per = "day"  # 200,000원 통원 1일당
+    risk.rules = [rule]
+    extra.coverages[0].id, extra.coverages[0].risks = "p1", [risk]
+    extra.coverages[0].exclusions, extra.coverage_codes = [], []
+    product = policy.merge([golden, extra], "x")
+    claim = build_claim([parse_document("r", RECEIPT), parse_document("d", DETAIL)])
+    cmap = link_claim(claim, product, section="질병비급여형")
+    (est,) = cmap.estimates
+    # 비급여 545,000 − max(50,000, 50% = 272,500) = 272,500 → 1일 한도 200,000
+    assert (est.covered, est.deductible, est.payable) == (545000, 272500, 200000)
+    assert est.notes == ["통원 1일 한도 200,000원 적용"]
