@@ -181,11 +181,27 @@ if product is None:
 report = policy.ground(product, terms_doc)  # 원문 근거 확인 → status confirmed / needs_review
 product = report.product
 with st.sidebar:
-    sections = sorted({r.section for c in product.coverages for r in c.risks if r.section})
+    # 보장종목 이름은 약관마다 겹칠 수 있어 (비중증·중증 특약의 《질병비급여형》) 약관과 함께 고름
+    pairs = list(
+        dict.fromkeys(
+            (c.id, c.name, r.section) for c in product.coverages for r in c.risks if r.section
+        )
+    )
+    repeated = {s for s in {p[2] for p in pairs} if sum(p[2] == s for p in pairs) > 1}
     # 기본은 정답 데이터(사람 검토)가 있는 보장종목
-    preferred = {k.section for c in golden.coverages for k in c.risks} if golden else set()
-    default_sec = next((i for i, s in enumerate(sections) if s in preferred), 0)
-    section = st.selectbox("보장종목", sections, index=default_sec) if sections else None
+    preferred = {(c.id, k.section) for c in golden.coverages for k in c.risks} if golden else set()
+    default_sec = next((i for i, p in enumerate(pairs) if (p[0], p[2]) in preferred), 0)
+    picked_pair = (
+        st.selectbox(
+            "보장종목",
+            pairs,
+            index=default_sec,
+            format_func=lambda p: f"{p[2]} · {p[1]}" if p[2] in repeated else p[2],
+        )
+        if pairs
+        else None
+    )
+    coverage_id, section = (picked_pair[0], picked_pair[2]) if picked_pair else (None, None)
     st.caption(f"원문 근거 확인 {report.confirmed}건 · 검토 필요 {report.needs_review}건")
 
 
@@ -220,7 +236,7 @@ if not docs_input:
 
 docs = [parse_document(name, text) for name, text in docs_input]
 claim = build_claim(docs)
-cmap = link_claim(claim, product, section=section)
+cmap = link_claim(claim, product, section=section, coverage_id=coverage_id)
 
 # --- 요약 ---
 st.divider()

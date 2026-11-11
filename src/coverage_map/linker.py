@@ -209,7 +209,22 @@ def _diagnosis_links(claim: Claim, product: Product, section: str | None) -> lis
     return links
 
 
-def link_claim(claim: Claim, product: Product, section: str | None = None) -> CoverageMap:
+def link_claim(
+    claim: Claim,
+    product: Product,
+    section: str | None = None,
+    coverage_id: str | None = None,
+) -> CoverageMap:
+    """coverage_id 를 주면 그 보장(약관) 안에서만 연결합니다.
+
+    보장종목 이름은 약관마다 겹칠 수 있음 (비중증·중증 비급여 특약 모두 《질병비급여형》).
+    section 만 주면 이름이 같은 다른 특약의 규칙이 섞이므로, 화면은 둘 다 넘깁니다.
+    """
+    full = product
+    if coverage_id is not None:
+        product = product.model_copy(
+            update={"coverages": [c for c in product.coverages if c.id == coverage_id]}
+        )
     # 선택한 보장종목 안의 규칙만 봄 (다른 보장종목·특약의 비급여 규칙과 섞지 않음)
     section_rules = [
         r
@@ -218,12 +233,18 @@ def link_claim(claim: Claim, product: Product, section: str | None = None) -> Co
         if section is None or risk.section == section
         for r in risk.rules
     ]
+    names = [risk.section for cov in full.coverages for risk in cov.risks if risk.section]
+    dup = {
+        n
+        for n in names
+        if len({c.id for c in full.coverages for k in c.risks if k.section == n}) > 1
+    }
     elsewhere = sorted(
         {
-            risk.section or cov.name
-            for cov in product.coverages
+            (f"{risk.section} ({cov.name})" if risk.section in dup else risk.section) or cov.name
+            for cov in full.coverages
             for risk in cov.risks
-            if risk.section != section
+            if (risk.section != section or (coverage_id is not None and cov.id != coverage_id))
             and any(r.benefit.cost_type == "non_covered" for r in risk.rules)
         }
     )

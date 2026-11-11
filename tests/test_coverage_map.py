@@ -223,3 +223,50 @@ def test_per_day_limit_caps_estimate():
     # 비급여 545,000 − max(50,000, 50% = 272,500) = 272,500 → 1일 한도 200,000
     assert (est.covered, est.deductible, est.payable) == (545000, 272500, 200000)
     assert est.notes == ["통원 1일 한도 200,000원 적용"]
+
+
+def test_same_section_name_in_two_riders_does_not_mix():
+    """비중증·중증 특약 모두 《질병비급여형》이 있음. coverage_id 로 고른 특약의 규칙만 써야 함."""
+    from coverage_map import policy
+
+    def rider(cov_id: str, name: str, deductible: int, ratio: int):
+        extra = load_product().model_copy(deep=True)
+        risk = next(k for k in extra.coverages[0].risks if k.claim_reason == "outpatient")
+        risk.id, risk.section = f"{cov_id}/질병비급여형/o1", "질병비급여형"
+        rule = risk.rules[0]
+        rule.id, rule.name = f"{cov_id}/질병비급여형/o1/1", f"비급여 통원 ({name})"
+        rule.conditions.facility, rule.conditions.limit = None, None
+        rule.benefit.cost_type = "non_covered"
+        rule.benefit.deductible.amounts = [deductible]
+        rule.benefit.deductible.ratios[0].numerator = ratio
+        rule.benefit.deductible.copay_rate = False
+        risk.rules = [rule]
+        cov = extra.coverages[0]
+        cov.id, cov.name, cov.risks, cov.exclusions = cov_id, name, [risk], []
+        extra.coverage_codes = []
+        return extra
+
+    product = policy.merge(
+        [
+            load_product(),
+            rider("p1", "비중증 특약", 50000, 50),
+            rider("p2", "중증 특약", 30000, 30),
+        ],
+        "x",
+    )
+    claim = build_claim([parse_document("r", RECEIPT), parse_document("d", DETAIL)])
+
+    mild = link_claim(claim, product, section="질병비급여형", coverage_id="p1")
+    (est,) = mild.estimates
+    assert est.rule.name == "비급여 통원 (비중증 특약)"
+    assert (est.covered, est.deductible, est.payable) == (545000, 272500, 272500)  # 50%
+
+    severe = link_claim(claim, product, section="질병비급여형", coverage_id="p2")
+    (est,) = severe.estimates
+    assert est.rule.name == "비급여 통원 (중증 특약)"
+    assert (est.covered, est.deductible, est.payable) == (545000, 163500, 381500)  # 30%
+
+    # 급여형에서 비급여 항목 안내에는 이름이 겹치는 보장종목을 특약 이름과 함께 표시
+    main = link_claim(claim, product, section="질병급여형", coverage_id="p0")
+    note = main.links[2].notes[0]
+    assert "질병비급여형 (비중증 특약)" in note and "질병비급여형 (중증 특약)" in note
